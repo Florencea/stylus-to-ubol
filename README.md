@@ -2,7 +2,7 @@
 
 A serverless, pure client-side one-way compiler converting Stylus export JSON into uBlock Origin Lite (uBOL) configuration JSON.
 
-**Live Deployment**: [https://florencea.github.io/ubol-workbench/](https://florencea.github.io/ubol-workbench/)
+**Live Deployment**: [https://florencea.github.io/stylus-to-ubol/](https://florencea.github.io/stylus-to-ubol/)
 
 ## Core Deliverables
 
@@ -102,7 +102,7 @@ export type UbolConfig = z.infer<typeof UbolConfigSchema>;
 
 The project is deployed directly to GitHub Pages:
 
-- **Live URL**: [https://florencea.github.io/ubol-workbench/](https://florencea.github.io/ubol-workbench/)
+- **Live URL**: [https://florencea.github.io/stylus-to-ubol/](https://florencea.github.io/stylus-to-ubol/)
 
 1. **Workflow**: `.github/workflows/deploy.yml` builds the production distribution and deploys to GitHub Pages automatically after `.github/workflows/ci.yml` passes on the `main` branch.
 2. **Path Portability**: `vite.config.ts` sets `base: './'` so assets resolve correctly under any repository name or subpath.
