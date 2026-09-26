@@ -62,7 +62,8 @@ All checks must pass with zero errors and zero warnings.
 
 - `src/core/schema.ts`: Zod schema definition for uBOL backup JSON (`UbolBackupSchema`, `UbolConfigSchema`).
 - `src/core/converter.ts`: AST-based CSS parser and selector normalization helpers.
-- `src/core/stylus-migrator.ts`: PostCSS AST converter for Stylus JSON export to uBOL backup format.
+- `src/core/migrator/`: Single-responsibility modules (AST walker, color detector, formatter, rule synthesizer, types).
+- `src/core/stylus-migrator.ts`: Pipeline facade orchestrating Stylus JSON export migration to uBOL backup format.
 - `src/main.ts`: Client-side converter controller, statistics computation, and JSON export triggers.
 - `src/style.css`: Minimalist converter UI stylesheet.
 - `tests/`: Vitest unit tests (`converter.test.ts`, `main.test.ts`, `stylus-migrator.test.ts`).

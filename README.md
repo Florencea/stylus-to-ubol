@@ -78,8 +78,14 @@ export type UbolConfig = z.infer<typeof UbolConfigSchema>;
 ├── src/
 │   ├── core/
 │   │   ├── converter.ts       # AST parsing and selector normalization helpers
+│   │   ├── migrator/          # Modular Stylus migration engine
+│   │   │   ├── ast-walker.ts       # CSS AST traversal & declaration collection
+│   │   │   ├── color-detector.ts   # CSS color property & value detection
+│   │   │   ├── formatter.ts        # Style declaration serialization
+│   │   │   ├── rule-synthesizer.ts # Rule compilation & light-dark pairing
+│   │   │   └── types.ts            # Migrator domain types & interfaces
 │   │   ├── schema.ts          # Zod validation schema
-│   │   └── stylus-migrator.ts # PostCSS Stylus migration utility
+│   │   └── stylus-migrator.ts # Stylus migration pipeline facade
 │   ├── types/
 │   │   └── ubo-core.d.ts      # TypeScript definitions for @gorhill/ubo-core
 │   ├── main.ts                # Client-side converter controller & stats computation
