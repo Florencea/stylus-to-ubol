@@ -5,6 +5,10 @@ Guidelines for AI agents and human contributors working on this repository.
 ## 1. Project Overview & Hard Rules
 
 - **Zero CSS File Persistence**: Do not persist intermediate `.css` files to disk. All conversions are performed in memory. The sole persistent data asset is uBOL backup JSON.
+- **Rules Splitting Architecture**:
+  - `customFilters`: Dedicated to pure cosmetic hide selectors grouped by domain: `[domain, [selector1, selector2, ...]]`.
+  - `sandboxFilters`: Dedicated to `:style(...)` style injection rules stored as full uBO syntax strings: `domain##selector:style(...)`.
+  - Global generic rules (empty domains or `*`) use `*` domain in `customFilters` and `*##` prefix in `sandboxFilters`.
 - **Forbidden `@media` in uBOL Rules**:
   - Color scheme media queries must be parsed at AST level and converted to modern CSS `light-dark(lightVal, darkVal)` with `color-scheme: light dark !important;`.
   - Platform and device conditions must use uBO preprocessor directives (`!#if env_mobile` / `!#endif`).

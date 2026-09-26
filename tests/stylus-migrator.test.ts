@@ -624,12 +624,54 @@ describe("Stylus Migrator", () => {
     ]);
   });
 
-  it("migrates stylus.json with full style injection rules (:style) across ithome, pts, and news.ycombinator.com", () => {
-    const stylusFilePath = path.resolve(process.cwd(), "stylus.json");
-    if (!fs.existsSync(stylusFilePath)) return;
+  it("migrates Stylus input with full style injection rules (:style) across ithome, pts, and news.ycombinator.com", () => {
+    const sampleStylusInput = [
+      {
+        enabled: true,
+        sections: [
+          {
+            // Global generic section (empty domains)
+            code: `
+              :root { --stylus-bg-dark-firefox: #1d1b1f; }
+              .sp-separator { display: none !important; }
+              * { text-rendering: auto !important; }
+            `,
+          },
+          {
+            // books.com.tw
+            code: `
+              .header_pop { display: none !important; }
+              body { font-family: var(--stylus-font-sans-serif) !important; }
+            `,
+            domains: ["books.com.tw"],
+          },
+          {
+            // www.ithome.com.tw
+            code: `
+              #page-header { display: flex !important; justify-content: center !important; width: 100% !important; }
+              .channel-item .title { font-size: 1rem !important; }
+            `,
+            domains: ["www.ithome.com.tw"],
+          },
+          {
+            // pts.org.tw
+            code: `
+              .container > .row > .col-lg-8 { flex: 0 0 75% !important; }
+            `,
+            domains: ["pts.org.tw"],
+          },
+          {
+            // news.ycombinator.com
+            code: `
+              .c00, .c00 a:link { color: light-dark(var(--stylus-hn-c00-light), var(--stylus-hn-c00-dark)) !important; }
+            `,
+            domains: ["news.ycombinator.com"],
+          },
+        ],
+      },
+    ];
 
-    const stylusContent = fs.readFileSync(stylusFilePath, "utf-8");
-    const result = migrateStylusJson(stylusContent);
+    const result = migrateStylusJson(sampleStylusInput);
 
     expect(isUbolConfig(result)).toBe(true);
     expect(UbolBackupSchema.parse(result)).toBeDefined();
@@ -649,25 +691,25 @@ describe("Stylus Migrator", () => {
       "books.com.tw##body:style(font-family: var(--stylus-font-sans-serif) !important;)",
     );
 
-    // Verify www.ithome.com.tw has styles in sandboxFilters (flex layout, margins, etc.)
+    // Verify www.ithome.com.tw has styles in sandboxFilters (flex layout, etc.)
     const ithomeRules = result.sandboxFilters?.filter((r) =>
       r.startsWith("www.ithome.com.tw##"),
     );
-    expect(ithomeRules?.length).toBeGreaterThan(10);
+    expect(ithomeRules?.length).toBeGreaterThan(0);
     expect(ithomeRules?.some((r) => r.includes("display: flex"))).toBe(true);
 
     // Verify pts.org.tw has styles in sandboxFilters
     const ptsRules = result.sandboxFilters?.filter((r) =>
       r.startsWith("pts.org.tw##"),
     );
-    expect(ptsRules?.length).toBeGreaterThan(10);
+    expect(ptsRules?.length).toBeGreaterThan(0);
     expect(ptsRules?.some((r) => r.includes("flex: 0 0 75%"))).toBe(true);
 
     // Verify news.ycombinator.com has light-dark styles in sandboxFilters
     const hnRules = result.sandboxFilters?.filter((r) =>
       r.startsWith("news.ycombinator.com##"),
     );
-    expect(hnRules?.length).toBeGreaterThan(10);
+    expect(hnRules?.length).toBeGreaterThan(0);
     expect(hnRules?.some((r) => r.includes("light-dark("))).toBe(true);
 
     // Verify * has both pure hide and style rules

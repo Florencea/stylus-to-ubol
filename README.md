@@ -13,7 +13,10 @@ A serverless, pure frontend custom style management and debugging workbench usin
 
 2. **Stylus Migration CLI (`npm run migrate:stylus --`)**
    - Standalone command-line migration utility converting Stylus export JSON into modern uBOL rules using PostCSS AST.
+   - Automatically splits rules into `customFilters` (pure `display: none` rules) and `sandboxFilters` (`:style(...)` rules).
+   - Translates global/generic rules (empty domains or `*`) to `*##` rules across `customFilters` and `sandboxFilters`.
    - Merges `@media (prefers-color-scheme: dark)` into modern CSS `light-dark()` with `color-scheme: light dark !important;`.
+   - Automatically falls back to `stylus.json` input and `ubol-config.json` output when executed in interactive terminal without arguments.
 
 3. **In-Page Userscript Client (`.user.js` / Web Component)**
    - Built with pure native Web Components (`customElements.define('ubol-workbench', ...)`), reactive state management, and open Shadow DOM with zero runtime UI framework dependencies.
@@ -44,13 +47,16 @@ export const UbolConfigSchema = z
       })
       .optional(),
     customFilters: z.array(z.tuple([z.string(), z.array(z.string())])),
+    sandboxFilters: z.array(z.string()).optional(),
   })
-  .passthrough();
+  .loose();
 
 export type UbolConfig = z.infer<typeof UbolConfigSchema>;
 ```
 
-Settings outside `customFilters` (such as `version`, `filteringModes`, and any extension preferences) are preserved untouched when reading and exporting uBOL backups.
+- **`customFilters`**: Pure cosmetic hide rules, grouped by hostname: `[domain, [selector1, selector2, ...]]`.
+- **`sandboxFilters`**: Style injection rules containing `:style(...)`, formatted as standard uBO filter strings: `domain##selector:style(property: value !important; ...)`.
+- **Preserved Settings**: Settings outside `customFilters` and `sandboxFilters` (such as `version`, `filteringModes`, and any extension preferences) are preserved untouched when reading and exporting uBOL backups.
 
 ### 2. Bidirectional Conversion Rules
 
