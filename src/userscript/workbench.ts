@@ -299,9 +299,28 @@ export class UbolWorkbenchClient {
           : otherFilters;
       updatedFilters.sort(([a], [b]) => a.localeCompare(b));
 
+      let sandboxRules: string[] = [];
+      if (this.styleText.trim().length > 0) {
+        const compiled = compileCssToUbolRules(this.styleText, this.domain);
+        sandboxRules = compiled.filter((r) => r.includes(":style("));
+      }
+
+      const otherSandbox = (this.initialConfig.sandboxFilters ?? []).filter(
+        (rule) => {
+          const hashIdx = rule.indexOf("##");
+          if (hashIdx === -1) return true;
+          const ruleDomain = rule.slice(0, hashIdx).trim();
+          return ruleDomain !== this.domain;
+        },
+      );
+      const updatedSandbox = [...otherSandbox, ...sandboxRules].sort();
+
       return {
         ...this.initialConfig,
         customFilters: updatedFilters,
+        ...(updatedSandbox.length > 0
+          ? { sandboxFilters: updatedSandbox }
+          : {}),
       };
     }
 

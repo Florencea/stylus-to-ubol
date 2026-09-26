@@ -318,5 +318,90 @@ describe("Converter Core", () => {
       );
       for (const r of rules) validateRuleWithUbo(r);
     });
+
+    it("compiles filter statements in dark media queries to :matches-media without invalid light-dark()", () => {
+      const css = `
+        @media (prefers-color-scheme: dark) {
+          img {
+            filter: invert(1);
+            -webkit-filter: invert(1);
+          }
+        }
+      `;
+      const rules = compileCssToUbolRules(css, "example.com");
+      expect(rules.some((r) => r.includes("light-dark"))).toBe(false);
+      expect(rules).toContain(
+        "example.com##:matches-media((prefers-color-scheme: dark)) img:style(filter: invert(1) !important; -webkit-filter: invert(1) !important;)",
+      );
+      for (const r of rules) validateRuleWithUbo(r);
+    });
+
+    it("handles comma-separated selectors with filter in dark media by emitting individual :matches-media rules", () => {
+      const css = `
+        @media (prefers-color-scheme: dark) {
+          img, svg, video {
+            filter: invert(1);
+          }
+        }
+      `;
+      const rules = compileCssToUbolRules(css, "example.com");
+      expect(rules).toEqual([
+        "example.com##:matches-media((prefers-color-scheme: dark)) img:style(filter: invert(1) !important;)",
+        "example.com##:matches-media((prefers-color-scheme: dark)) svg:style(filter: invert(1) !important;)",
+        "example.com##:matches-media((prefers-color-scheme: dark)) video:style(filter: invert(1) !important;)",
+      ]);
+      for (const r of rules) validateRuleWithUbo(r);
+    });
+
+    it("compiles base filter and dark filter into separate unconditional and :matches-media rules", () => {
+      const css = `
+        img {
+          filter: grayscale(1);
+        }
+        @media (prefers-color-scheme: dark) {
+          img {
+            filter: invert(1);
+          }
+        }
+      `;
+      const rules = compileCssToUbolRules(css, "example.com");
+      expect(rules).toEqual([
+        "example.com##img:style(filter: grayscale(1) !important;)",
+        "example.com##:matches-media((prefers-color-scheme: dark)) img:style(filter: invert(1) !important;)",
+      ]);
+      for (const r of rules) validateRuleWithUbo(r);
+    });
+
+    it("unwraps :matches-media rules in parseUbolToCss into native @media blocks", () => {
+      const filters = `
+        example.com##:matches-media((prefers-color-scheme: dark)) img:style(filter: invert(1) !important;)
+      `;
+      const css = parseUbolToCss(filters, "example.com", "desktop");
+      expect(css).toContain("@media (prefers-color-scheme: dark) {");
+      expect(css).toContain("filter: invert(1) !important;");
+    });
+
+    it("performs bidirectional round-trip on CSS with media-query filter rules", () => {
+      const originalCss = `
+        img {
+          filter: grayscale(1) !important;
+        }
+        @media (prefers-color-scheme: dark) {
+          img {
+            filter: invert(1) !important;
+          }
+        }
+      `;
+      const compiledRules = compileCssToUbolRules(originalCss, "example.com");
+      for (const r of compiledRules) validateRuleWithUbo(r);
+
+      const parsedCss = parseUbolToCss(
+        compiledRules.join("\n"),
+        "example.com",
+        "desktop",
+      );
+      const recompiledRules = compileCssToUbolRules(parsedCss, "example.com");
+      expect(recompiledRules).toEqual(compiledRules);
+    });
   });
 });

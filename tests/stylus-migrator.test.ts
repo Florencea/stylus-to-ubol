@@ -723,4 +723,49 @@ describe("Stylus Migrator", () => {
     expect(starSandbox?.length).toBeGreaterThan(0);
     expect(starSandbox?.some((r) => r.includes(":root:style("))).toBe(true);
   });
+
+  it("migrates Stylus section containing filter under prefers-color-scheme: dark into sandboxFilters with :matches-media", () => {
+    const stylusJson = JSON.stringify([
+      {
+        enabled: true,
+        name: "Dark Invert Filter",
+        sections: [
+          {
+            domains: ["darksite.com"],
+            code: `
+              img, video {
+                filter: grayscale(0.5);
+              }
+              @media (prefers-color-scheme: dark) {
+                img, video {
+                  filter: invert(1) hue-rotate(180deg);
+                }
+              }
+            `,
+          },
+        ],
+      },
+    ]);
+
+    const result = migrateStylusJson(stylusJson);
+    expect(result.customFilters).toHaveLength(0);
+    expect(result.sandboxFilters).toBeDefined();
+
+    // Check base filter rule
+    expect(result.sandboxFilters).toContain(
+      "darksite.com##img, video:style(filter: grayscale(0.5) !important;)",
+    );
+
+    // Check dark filter rules (individual sub-selectors)
+    expect(result.sandboxFilters).toContain(
+      "darksite.com##:matches-media((prefers-color-scheme: dark)) img:style(filter: invert(1) hue-rotate(180deg) !important;)",
+    );
+    expect(result.sandboxFilters).toContain(
+      "darksite.com##:matches-media((prefers-color-scheme: dark)) video:style(filter: invert(1) hue-rotate(180deg) !important;)",
+    );
+
+    for (const r of result.sandboxFilters ?? []) {
+      validateRuleWithUbo(r);
+    }
+  });
 });

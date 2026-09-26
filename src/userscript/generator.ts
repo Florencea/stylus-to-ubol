@@ -77,16 +77,42 @@ export const generateUserscriptBundle = (
         if (posTokens.length > 0) {
           const matched = posTokens.some(t => {
             const pos = t.toLowerCase();
-            return target === pos || target.endsWith('.' + pos);
+            return pos === '*' || target === pos || target.endsWith('.' + pos);
           });
           if (!matched) continue;
         }
       }
 
+      function extractMatchesMedia(sel) {
+        const m = sel.match(/^:matches-media\\(/);
+        if (!m) return null;
+        const start = m[0].length - 1;
+        let depth = 0;
+        let close = -1;
+        for (let i = start; i < sel.length; i++) {
+          if (sel[i] === '(') depth++;
+          else if (sel[i] === ')') {
+            depth--;
+            if (depth === 0) { close = i; break; }
+          }
+        }
+        if (close === -1) return null;
+        let mq = sel.slice(start + 1, close).trim();
+        const rest = sel.slice(close + 1).trim();
+        if (!mq.startsWith('(') && !mq.startsWith('not ') && !mq.startsWith('only ')) mq = '(' + mq + ')';
+        return { mediaQuery: mq, restSelector: rest };
+      }
+
       const styleIdx = restPart.indexOf(':style(');
       if (styleIdx === -1) {
-        if (restPart.trim().length > 0) {
-          cssBlocks.push(restPart.trim() + ' {\\n  display: none !important;\\n}');
+        const sel = restPart.trim();
+        if (sel.length > 0) {
+          const mm = extractMatchesMedia(sel);
+          if (mm && mm.restSelector.length > 0) {
+            cssBlocks.push('@media ' + mm.mediaQuery + ' {\\n  ' + mm.restSelector + ' {\\n    display: none !important;\\n  }\\n}');
+          } else {
+            cssBlocks.push(sel + ' {\\n  display: none !important;\\n}');
+          }
         }
       } else {
         const selector = restPart.slice(0, styleIdx).trim();
@@ -102,7 +128,14 @@ export const generateUserscriptBundle = (
         }
         if (closeParen !== -1 && selector.length > 0) {
           const styleContent = restPart.slice(openParen + 1, closeParen).trim();
-          cssBlocks.push(selector + ' {\\n  ' + styleContent + '\\n}');
+          const decls = styleContent.split(';').map(d => d.trim()).filter(Boolean).map(d => '  ' + d + ';').join('\\n');
+          const mm = extractMatchesMedia(selector);
+          if (mm && mm.restSelector.length > 0) {
+            const indented = decls.split('\\n').map(l => '  ' + l).join('\\n');
+            cssBlocks.push('@media ' + mm.mediaQuery + ' {\\n  ' + mm.restSelector + ' {\\n' + indented + '\\n  }\\n}');
+          } else {
+            cssBlocks.push(selector + ' {\\n' + decls + '\\n}');
+          }
         }
       }
     }
@@ -115,27 +148,60 @@ export const generateUserscriptBundle = (
     const prefix = domain && domain.trim().length > 0 ? domain.trim() + '##' : '##';
     const rules = [];
 
-    const blocks = css.match(/([^{}]+)\\{([^{}]*)\\}/g) || [];
-    for (const block of blocks) {
-      const openBrace = block.indexOf('{');
-      const closeBrace = block.lastIndexOf('}');
-      if (openBrace === -1 || closeBrace === -1) continue;
-
-      const rawSel = block.slice(0, openBrace).trim();
-      const body = block.slice(openBrace + 1, closeBrace).trim();
-      if (!rawSel || !body || rawSel.startsWith('@')) continue;
-
+    function processBlock(sel, body, mediaQuery) {
+      if (!sel || !body) return;
       const decls = body.split(';').map(d => d.trim()).filter(Boolean);
-      const isPureHide = decls.length === 1 && decls[0].toLowerCase().startsWith('display:') && decls[0].toLowerCase().includes('none');
+      const isPureHide = !mediaQuery && decls.length === 1 && decls[0].toLowerCase().startsWith('display:') && decls[0].toLowerCase().includes('none');
 
       if (isPureHide) {
-        rules.push(prefix + rawSel);
+        rules.push(prefix + sel);
       } else {
         const formatted = decls.map(d => {
           const clean = d.replace(/\\s*!important\\s*$/i, '').trim();
           return clean + ' !important;';
         }).join(' ');
-        rules.push(prefix + rawSel + ':style(' + formatted + ')');
+
+        if (mediaQuery) {
+          const subSelectors = sel.split(',').map(s => s.trim()).filter(Boolean);
+          for (const sub of subSelectors) {
+            rules.push(prefix + ':matches-media(' + mediaQuery + ') ' + sub + ':style(' + formatted + ')');
+          }
+        } else {
+          rules.push(prefix + sel + ':style(' + formatted + ')');
+        }
+      }
+    }
+
+    let i = 0;
+    while (i < css.length) {
+      const openBrace = css.indexOf('{', i);
+      if (openBrace === -1) break;
+      const header = css.slice(i, openBrace).trim();
+      if (header.startsWith('@media')) {
+        let depth = 1;
+        let j = openBrace + 1;
+        while (j < css.length && depth > 0) {
+          if (css[j] === '{') depth++;
+          else if (css[j] === '}') depth--;
+          j++;
+        }
+        const mediaBody = css.slice(openBrace + 1, j - 1);
+        const mqMatch = header.match(/@media\\s+(.+)$/);
+        let mq = mqMatch ? mqMatch[1].trim() : '';
+        if (!mq.startsWith('(') && !mq.startsWith('not ') && !mq.startsWith('only ')) mq = '(' + mq + ')';
+
+        const innerBlocks = mediaBody.match(/([^{}]+)\\{([^{}]*)\\}/g) || [];
+        for (const ib of innerBlocks) {
+          const ob = ib.indexOf('{');
+          const cb = ib.lastIndexOf('}');
+          processBlock(ib.slice(0, ob).trim(), ib.slice(ob + 1, cb).trim(), mq);
+        }
+        i = j;
+      } else {
+        const closeBrace = css.indexOf('}', openBrace);
+        if (closeBrace === -1) break;
+        processBlock(header, css.slice(openBrace + 1, closeBrace).trim(), null);
+        i = closeBrace + 1;
       }
     }
 
@@ -382,15 +448,28 @@ export const generateUserscriptBundle = (
         const otherFilters = initialBackup.customFilters.filter(([domain]) => domain !== targetDomain);
         const updatedFilters = cleanHide.length > 0 ? [...otherFilters, [targetDomain, cleanHide]] : otherFilters;
         updatedFilters.sort(([a], [b]) => a.localeCompare(b));
+
+        const styleRules = compileCssToUbolRules(currentStyle, targetDomain).filter(r => r.includes(':style('));
+        const otherSandbox = Array.isArray(initialBackup.sandboxFilters)
+          ? initialBackup.sandboxFilters.filter(r => {
+              const h = r.indexOf('##');
+              return h === -1 || r.slice(0, h).trim() !== targetDomain;
+            })
+          : [];
+        const updatedSandbox = [...otherSandbox, ...styleRules].sort();
+
         exportConfig = {
           ...initialBackup,
-          customFilters: updatedFilters
+          customFilters: updatedFilters,
+          ...(updatedSandbox.length > 0 ? { sandboxFilters: updatedSandbox } : {})
         };
       } else {
+        const styleRules = compileCssToUbolRules(currentStyle, targetDomain).filter(r => r.includes(':style('));
         exportConfig = {
           version: new Date().toISOString().slice(0, 10).replace(/-/g, '.'),
           filteringModes: { none: [], basic: [], optimal: ['all-urls'], complete: [] },
-          customFilters: cleanHide.length > 0 ? [[targetDomain, cleanHide]] : []
+          customFilters: cleanHide.length > 0 ? [[targetDomain, cleanHide]] : [],
+          ...(styleRules.length > 0 ? { sandboxFilters: styleRules.sort() } : {})
         };
       }
       const blob = new Blob([JSON.stringify(exportConfig, null, 2)], { type: 'application/json' });

@@ -149,4 +149,29 @@ describe("Workbench Controller", () => {
       ["other.com", [".other-banner"]],
     ]);
   });
+
+  it("compiles styleText into sandboxFilters and merges properly on export", () => {
+    const initialConfig = {
+      customFilters: [["example.com", [".ad"]]] as [string, string[]][],
+      sandboxFilters: [
+        "other.com##.card:style(color: red !important;)",
+        "example.com##.old-style:style(opacity: 0.5 !important;)",
+      ],
+    };
+
+    const client = new UbolWorkbenchClient({
+      domain: "example.com",
+      initialConfig,
+    });
+
+    client.hideText = ".ad";
+    client.styleText = ".new-style {\n  color: blue;\n}";
+
+    const exported = client.exportUbolConfig();
+    expect(exported.customFilters).toEqual([["example.com", [".ad"]]]);
+    expect(exported.sandboxFilters).toEqual([
+      "example.com##.new-style:style(color: blue !important;)",
+      "other.com##.card:style(color: red !important;)",
+    ]);
+  });
 });

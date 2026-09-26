@@ -1,7 +1,11 @@
 import postcss from "postcss";
 import nested from "postcss-nested";
 import { AstFilterParser } from "@gorhill/ubo-core/js/static-filtering-parser.js";
-import { normalizeSelector, splitSelectorList } from "./converter.ts";
+import {
+  isFilterProperty,
+  normalizeSelector,
+  splitSelectorList,
+} from "./converter.ts";
 import {
   filterTextToUbolConfig,
   isUbolConfig,
@@ -30,6 +34,7 @@ interface StylusStyle {
 
 interface SelectorStyles {
   selector: string;
+  baseDecls: Map<string, string>;
   lightDecls: Map<string, string>;
   darkDecls: Map<string, string>;
 }
@@ -92,6 +97,7 @@ export const parseStylusSection = (
     if (!entry) {
       entry = {
         selector,
+        baseDecls: new Map<string, string>(),
         lightDecls: new Map<string, string>(),
         darkDecls: new Map<string, string>(),
       };
@@ -138,8 +144,7 @@ export const parseStylusSection = (
       } else if (isLightMedia) {
         entry.lightDecls.set(prop, val);
       } else {
-        // Base / light declaration
-        entry.lightDecls.set(prop, val);
+        entry.baseDecls.set(prop, val);
       }
     });
   });
@@ -150,6 +155,7 @@ export const parseStylusSection = (
 
   for (const entry of selectorMap.values()) {
     const allProps = new Set([
+      ...entry.baseDecls.keys(),
       ...entry.lightDecls.keys(),
       ...entry.darkDecls.keys(),
     ]);
@@ -160,8 +166,9 @@ export const parseStylusSection = (
     const isPureHide =
       allProps.size === 1 &&
       allProps.has("display") &&
-      cleanDeclValue(entry.lightDecls.get("display") ?? "").toLowerCase() ===
-        "none" &&
+      cleanDeclValue(
+        entry.baseDecls.get("display") ?? entry.lightDecls.get("display") ?? "",
+      ).toLowerCase() === "none" &&
       (!entry.darkDecls.has("display") ||
         cleanDeclValue(entry.darkDecls.get("display") ?? "").toLowerCase() ===
           "none");
@@ -172,48 +179,100 @@ export const parseStylusSection = (
     }
 
     // Build style declarations
-    const formattedDecls: string[] = [];
+    const baseFormattedDecls: string[] = [];
+    const baseFilterDecls: string[] = [];
+    const lightFilterDecls: string[] = [];
+    const darkFilterDecls: string[] = [];
 
     for (const prop of allProps) {
+      const baseVal = entry.baseDecls.get(prop);
       const lightVal = entry.lightDecls.get(prop);
       const darkVal = entry.darkDecls.get(prop);
 
-      if (lightVal !== undefined && darkVal !== undefined) {
-        const cleanedLight = cleanDeclValue(lightVal);
-        const cleanedDark = cleanDeclValue(darkVal);
+      if (isFilterProperty(prop)) {
+        if (baseVal !== undefined) {
+          baseFilterDecls.push(
+            `${prop}: ${cleanDeclValue(baseVal)} !important;`,
+          );
+        }
+        if (
+          lightVal !== undefined &&
+          (baseVal === undefined ||
+            cleanDeclValue(baseVal) !== cleanDeclValue(lightVal))
+        ) {
+          lightFilterDecls.push(
+            `${prop}: ${cleanDeclValue(lightVal)} !important;`,
+          );
+        }
+        if (
+          darkVal !== undefined &&
+          (baseVal === undefined ||
+            cleanDeclValue(baseVal) !== cleanDeclValue(darkVal))
+        ) {
+          darkFilterDecls.push(
+            `${prop}: ${cleanDeclValue(darkVal)} !important;`,
+          );
+        }
+      } else {
+        const effectiveLight = lightVal ?? baseVal;
 
-        if (cleanedLight === cleanedDark) {
-          formattedDecls.push(`${prop}: ${cleanedLight} !important;`);
-        } else {
-          formattedDecls.push(
-            `${prop}: light-dark(${cleanedLight}, ${cleanedDark}) !important;`,
+        if (effectiveLight !== undefined && darkVal !== undefined) {
+          const cleanedLight = cleanDeclValue(effectiveLight);
+          const cleanedDark = cleanDeclValue(darkVal);
+
+          if (cleanedLight === cleanedDark) {
+            baseFormattedDecls.push(`${prop}: ${cleanedLight} !important;`);
+          } else {
+            baseFormattedDecls.push(
+              `${prop}: light-dark(${cleanedLight}, ${cleanedDark}) !important;`,
+            );
+            needsColorScheme = true;
+          }
+        } else if (effectiveLight !== undefined) {
+          const cleanedLight = cleanDeclValue(effectiveLight);
+          baseFormattedDecls.push(`${prop}: ${cleanedLight} !important;`);
+        } else if (darkVal !== undefined) {
+          const cleanedDark = cleanDeclValue(darkVal);
+          baseFormattedDecls.push(
+            `${prop}: light-dark(initial, ${cleanedDark}) !important;`,
           );
           needsColorScheme = true;
         }
-      } else if (lightVal !== undefined) {
-        const cleanedLight = cleanDeclValue(lightVal);
-        formattedDecls.push(`${prop}: ${cleanedLight} !important;`);
-      } else if (darkVal !== undefined) {
-        const cleanedDark = cleanDeclValue(darkVal);
-        formattedDecls.push(
-          `${prop}: light-dark(initial, ${cleanedDark}) !important;`,
-        );
-        needsColorScheme = true;
       }
     }
 
-    if (formattedDecls.length > 0) {
-      const declPayload = formattedDecls.join(" ");
+    const subSelectors = splitSelectorList(entry.selector);
+    const unconditionalDecls = [...baseFormattedDecls, ...baseFilterDecls];
+
+    if (unconditionalDecls.length > 0) {
+      const declPayload = unconditionalDecls.join(" ");
       const combinedRule = `${prefix}${entry.selector}:style(${declPayload})`;
       const uboParser = new AstFilterParser();
       uboParser.parse(combinedRule);
       if (!uboParser.hasError() && uboParser.isCosmeticFilter()) {
         styleRules.push(combinedRule);
       } else {
-        const subSelectors = splitSelectorList(entry.selector);
         for (const sub of subSelectors) {
           styleRules.push(`${prefix}${sub}:style(${declPayload})`);
         }
+      }
+    }
+
+    if (lightFilterDecls.length > 0) {
+      const declPayload = lightFilterDecls.join(" ");
+      for (const sub of subSelectors) {
+        styleRules.push(
+          `${prefix}:matches-media((prefers-color-scheme: light)) ${sub}:style(${declPayload})`,
+        );
+      }
+    }
+
+    if (darkFilterDecls.length > 0) {
+      const declPayload = darkFilterDecls.join(" ");
+      for (const sub of subSelectors) {
+        styleRules.push(
+          `${prefix}:matches-media((prefers-color-scheme: dark)) ${sub}:style(${declPayload})`,
+        );
       }
     }
   }

@@ -68,9 +68,10 @@ export type UbolConfig = z.infer<typeof UbolConfigSchema>;
   - uBOL Filter: `domain##.content:style(color: light-dark(#000, #fff) !important;)`
   - Output CSS: `.content { color: light-dark(#000, #fff) !important; }`
   - Inverse: General style declarations compile to `domain##selector:style(...)` with enforced `!important`.
-- **Media Query Elimination**:
-  - `@media (prefers-color-scheme: dark)` and light declarations are parsed at AST level and unified into `light-dark(lightVal, darkVal)`.
-  - `color-scheme: light dark !important;` is enforced at the root level.
+- **Media Query Elimination & CSS Filter Conversion**:
+  - Color scheme media queries for standard color declarations are parsed at AST level and unified into `light-dark(lightVal, darkVal)` with `color-scheme: light dark !important;` enforced at root.
+  - CSS `filter` properties (`filter`, `-webkit-filter`, `backdrop-filter`, `-webkit-backdrop-filter`) accept `<filter-function-list>` rather than `<color>` values, rendering CSS `light-dark()` invalid. They are compiled into uBO procedural `:matches-media((prefers-color-scheme: dark))` and `:matches-media((prefers-color-scheme: light))` filters stored in `sandboxFilters`.
+  - When converting uBOL rules back to CSS for in-page injection and live preview, `:matches-media(...)` rules are cleanly unwrapped into native `@media` blocks.
   - Device/platform conditional filters use uBO preprocessor directives (`!#if env_mobile` / `!#endif`).
 - **Zero Disk CSS Persistence**:
   - No intermediate `.css` files are persisted to disk. All conversions are performed in memory.
@@ -160,3 +161,14 @@ npm run build
 # Preview production build locally
 npm run preview
 ```
+
+## Upcoming Roadmap: Desktop vs Mobile Dual-Configuration
+
+In Stylus, rulesets such as `ubo style desktop` and `ubo style mobile` utilize `@media (pointer: coarse)` to differentiate desktop and mobile environments. The following enhancements are planned for upcoming iterations:
+
+1. **Dual Configuration Export**:
+   - Split migration output into two distinct SSOT files: `ubol-config-desktop.json` and `ubol-config-mobile.json`.
+2. **Multi-Config Hub UI**:
+   - Enhance the static Hub (`index.html`) to accept multiple uBOL JSON files concurrently, enabling side-by-side or combined management.
+3. **Userscript Scope Selector**:
+   - Expand the in-page `<ubol-workbench>` modal UI with a scope selector allowing users to designate rules as **Global**, **Desktop-only**, or **Mobile-only** directly from the workbench.
