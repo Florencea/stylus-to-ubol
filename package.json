@@ -4,8 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "agent:format": "prettier . --write",
     "agent:lint": "eslint --no-inline-config --no-color --max-warnings 0",
     "agent:lint:ci": "actionlint",
+    "agent:lint:eslint": "eslint --no-inline-config --no-color --max-warnings 0",
+    "agent:lint:eslint:fix": "eslint --no-inline-config --no-color --fix --max-warnings 0",
     "agent:lint:fix": "eslint --no-inline-config --no-color --fix --max-warnings 0",
     "agent:test:e2e": "playwright test --reporter=line",
     "agent:test:unit": "vitest run --reporter=tap-flat --no-color",
@@ -14,7 +17,7 @@
     "agent:verify:inner": "npm run agent:typecheck && npm run agent:lint",
     "agent:verify:unit": "npm run agent:verify:inner && npm run agent:test:unit",
     "build": "vite build",
-    "check": "npm run typecheck && npm run lint && npm run format:check && npm run check:deadcode && npm run test && npm run build",
+    "check": "npm run typecheck && npm run lint && npm run format:check && npm run check:deadcode && npm run test && npm run test:e2e && npm run build",
     "check:deadcode": "knip",
     "dev": "vite",
     "format": "prettier . --write",
@@ -23,13 +26,20 @@
     "lint:ci": "actionlint",
     "lint:fix": "eslint --fix",
     "preview": "vite preview",
-    "test": "vitest",
+    "test": "vitest run",
     "test:e2e": "playwright test",
     "test:setup": "playwright install chromium",
     "typecheck": "tsc -b"
   },
+  "dependencies": {
+    "@gorhill/ubo-core": "0.1.30",
+    "postcss": "8.5.28",
+    "postcss-nested": "8.0.1",
+    "zod": "4.6.5"
+  },
   "devDependencies": {
     "@eslint/js": "10.0.1",
+    "@playwright/test": "1.63.0",
     "@types/node": "26.6.3",
     "@typescript/native": "npm:typescript@7.0.2",
     "eslint": "10.11.0",
@@ -47,15 +57,12 @@
     "node": "24.21.0"
   },
   "knip": {
+    "ignore": [
+      "src/stubs/**"
+    ],
     "ignoreBinaries": [
       "actionlint"
     ],
     "playwright": true
-  },
-  "dependencies": {
-    "@gorhill/ubo-core": "0.1.30",
-    "postcss": "8.5.28",
-    "postcss-nested": "8.0.1",
-    "zod": "4.6.5"
   }
 }
