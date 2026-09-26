@@ -1,5 +1,5 @@
 {
-  "name": "ubol-workbench",
+  "name": "stylus-to-ubol",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -25,7 +25,6 @@
     "lint": "eslint",
     "lint:ci": "actionlint",
     "lint:fix": "eslint --fix",
-    "migrate:stylus": "node src/cli/migrate-stylus.ts",
     "preview": "vite preview",
     "test": "vitest run",
     "test:e2e": "playwright test",

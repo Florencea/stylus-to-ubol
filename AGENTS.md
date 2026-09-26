@@ -4,6 +4,7 @@ Guidelines for AI agents and human contributors working on this repository.
 
 ## 1. Project Overview & Hard Rules
 
+- **Unidirectional Data Flow**: Stylus JSON export is the sole Single Source of Truth (SSOT). Conversion is strictly one-way: Stylus JSON compiles to uBOL JSON configurations (desktop, mobile, and complete). There is no reverse conversion back to Stylus.
 - **Zero CSS File Persistence**: Do not persist intermediate `.css` files to disk. All conversions are performed in memory. The sole persistent data asset is uBOL backup JSON.
 - **Rules Splitting Architecture**:
   - `customFilters`: Dedicated to pure cosmetic hide selectors grouped by domain: `[domain, [selector1, selector2, ...]]`.
@@ -11,9 +12,8 @@ Guidelines for AI agents and human contributors working on this repository.
   - Global generic rules (empty domains or `*`) use `*` domain in `customFilters` and `*##` prefix in `sandboxFilters`.
 - **Forbidden `@media` in uBOL Rules**:
   - Color scheme media queries must be parsed at AST level and converted to modern CSS `light-dark(lightVal, darkVal)` with `color-scheme: light dark !important;`.
-  - Platform and device conditions must use uBO preprocessor directives (`!#if env_mobile` / `!#endif`).
+  - Platform and device conditions must be classified during migration (via pointer media queries or section naming) or use uBO preprocessor directives (`!#if env_mobile` / `!#endif`).
   - All declarations must enforce `!important`.
-- **Zero UI Framework Dependencies**: The Userscript in-page modal must use pure native Web Components (`customElements.define`) and open Shadow DOM. Do not add React, Vue, or other runtime frameworks.
 - **Language & Style Constraints**:
   - Agent responses to the user in chat must use Traditional Chinese (繁體中文).
   - All other project artifacts—including source code, comments, UI text, documentation, commit messages, and tests—must use concise English.
@@ -60,16 +60,14 @@ All checks must pass with zero errors and zero warnings.
 
 ## 4. Architecture & Core Modules
 
-- `src/core/schema.ts`: Zod schema definition for uBOL backup JSON (`UbolBackupSchema`).
-- `src/core/converter.ts`: AST-based bidirectional parser (`parseUbolToCss`, `compileCssToUbolRules`).
+- `src/core/schema.ts`: Zod schema definition for uBOL backup JSON (`UbolBackupSchema`, `UbolConfigSchema`).
+- `src/core/converter.ts`: AST-based CSS parser and selector normalization helpers.
 - `src/core/stylus-migrator.ts`: PostCSS AST converter for Stylus JSON export to uBOL backup format.
-- `src/cli/migrate-stylus.ts`: Standalone CLI tool for migrating Stylus JSON exports to uBOL backup format (`npm run migrate:stylus --`).
-- `src/userscript/workbench.ts`: `<ubol-workbench>` Web Component controller, reactive state, and DOM observer.
-- `src/userscript/shadow-modal.ts`: Shadow DOM UI templates, styles, and tab switching.
-- `src/userscript/generator.ts`: Userscript compiler generating standalone `.user.js` files with exact `@match` headers.
+- `src/main.ts`: Client-side converter controller, statistics computation, and JSON export triggers.
+- `src/style.css`: Minimalist converter UI stylesheet.
 - `src/stubs/node-stubs.ts`: Lightweight browser stubs for `path`, `fs`, and `source-map-js`.
-- `tests/`: Vitest unit tests (`converter.test.ts`, `stylus-migrator.test.ts`, `workbench.test.ts`).
-- `tests/e2e/`: Playwright end-to-end integration tests (`workbench.spec.ts`).
+- `tests/`: Vitest unit tests (`converter.test.ts`, `main.test.ts`, `stylus-migrator.test.ts`).
+- `tests/e2e/`: Playwright end-to-end integration tests (`converter.spec.ts`).
 
 ## 5. Git Workflow & Commit Restrictions
 

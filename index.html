@@ -4,82 +4,144 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>uBOL Workbench</title>
+    <title>stylus-to-ubol</title>
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
     <div id="app">
-      <main class="card hub-card">
-        <header class="hub-header">
-          <div class="logo-box">uBOL</div>
+      <main class="card converter-card">
+        <header class="converter-header">
+          <div class="logo-box">S2U</div>
           <div>
-            <h1>uBOL Workbench</h1>
+            <h1>stylus-to-ubol</h1>
             <p class="subtitle">
-              uBlock Origin Lite Single Source of Truth (SSOT) Style Workbench
+              Pure client-side one-way Stylus to uBlock Origin Lite compiler
             </p>
           </div>
         </header>
 
         <section class="action-section">
-          <!-- (1) File Import -->
+          <!-- Dropzone for stylus.json upload -->
           <div
             class="dropzone"
-            id="ubol-dropzone"
+            id="stylus-dropzone"
             tabindex="0"
             role="button"
-            aria-label="Import uBOL Configuration"
+            aria-label="Upload Stylus JSON export file"
           >
             <input
               type="file"
-              id="ubol-file-input"
+              id="stylus-file-input"
               accept=".json,application/json"
-              multiple
               style="display: none"
             />
             <button
               type="button"
               class="btn btn-secondary"
-              id="btn-import-ubol"
+              id="btn-upload-stylus"
             >
-              Import uBOL Configuration
+              Select stylus.json
             </button>
-            <span class="drop-hint">or drop .json backup file(s) here</span>
+            <span class="drop-hint">or drop stylus.json export file here</span>
           </div>
 
-          <!-- Multi-Config Hub Container (Side-by-Side Management) -->
-          <div class="configs-container" id="configs-container" hidden>
-            <div class="configs-header">
-              <span class="configs-title">Loaded Configurations</span>
-              <button type="button" class="btn-clear" id="btn-clear-configs">
-                Clear All
-              </button>
+          <!-- File Info Status Bar -->
+          <div class="file-status" id="file-status" hidden>
+            <span class="file-name" id="file-name"></span>
+            <span class="file-badge">Ready</span>
+          </div>
+
+          <!-- Statistics Panel -->
+          <div class="stats-panel" id="stats-panel" hidden>
+            <div class="stats-grid">
+              <!-- Desktop Stats Card -->
+              <div class="stats-card desktop-card">
+                <div class="stats-card-header">
+                  <span class="stats-card-title">Desktop Configuration</span>
+                  <span class="badge badge-desktop">Desktop</span>
+                </div>
+                <div class="stats-metrics">
+                  <div class="metric">
+                    <span class="metric-label">Target Domains</span>
+                    <span class="metric-value" id="desktop-domains">0</span>
+                  </div>
+                  <div class="metric">
+                    <span class="metric-label">Hide Rules</span>
+                    <span class="metric-value" id="desktop-hides">0</span>
+                  </div>
+                  <div class="metric">
+                    <span class="metric-label">Style Rules</span>
+                    <span class="metric-value" id="desktop-styles">0</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Mobile Stats Card -->
+              <div class="stats-card mobile-card">
+                <div class="stats-card-header">
+                  <span class="stats-card-title">Mobile Configuration</span>
+                  <span class="badge badge-mobile">Mobile</span>
+                </div>
+                <div class="stats-metrics">
+                  <div class="metric">
+                    <span class="metric-label">Target Domains</span>
+                    <span class="metric-value" id="mobile-domains">0</span>
+                  </div>
+                  <div class="metric">
+                    <span class="metric-label">Hide Rules</span>
+                    <span class="metric-value" id="mobile-hides">0</span>
+                  </div>
+                  <div class="metric">
+                    <span class="metric-label">Style Rules</span>
+                    <span class="metric-value" id="mobile-styles">0</span>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div class="configs-list" id="configs-list"></div>
+
+            <!-- Complete Unified Summary Bar -->
+            <div class="unified-summary-bar">
+              <span class="unified-label">Complete Configuration:</span>
+              <span class="unified-values" id="complete-summary"
+                >0 domains, 0 hide rules, 0 style rules</span
+              >
+            </div>
           </div>
 
-          <!-- (2) Script Install Button -->
-          <a
-            class="btn btn-install disabled"
-            id="btn-install-userscript"
-            download="ubol-workbench.user.js"
-            role="button"
-            aria-disabled="true"
-          >
-            Install Userscript
-          </a>
+          <!-- Download Action Buttons -->
+          <div class="download-section" id="download-section">
+            <button
+              type="button"
+              class="btn btn-download btn-desktop disabled"
+              id="btn-download-desktop"
+              disabled
+            >
+              Download Desktop (ubol-config-desktop.json)
+            </button>
+            <button
+              type="button"
+              class="btn btn-download btn-mobile disabled"
+              id="btn-download-mobile"
+              disabled
+            >
+              Download Mobile (ubol-config-mobile.json)
+            </button>
+            <button
+              type="button"
+              class="btn btn-download btn-complete disabled"
+              id="btn-download-complete"
+              disabled
+            >
+              Download Complete (ubol-config.json)
+            </button>
+          </div>
 
-          <!-- Status Info -->
-          <div class="status-info" id="status-info" hidden></div>
-
-          <!-- (3) Error Alert Area -->
+          <!-- Error Alert Panel -->
           <div class="error-panel" id="error-panel" hidden>
             <div class="error-header">
-              <span class="error-title">Invalid Configuration</span>
+              <span class="error-title">Invalid Stylus JSON</span>
             </div>
             <pre class="error-message" id="error-message"></pre>
-            <button class="btn btn-secondary" id="btn-copy-debug" type="button">
-              Copy Debug Info for Agent
-            </button>
           </div>
         </section>
       </main>

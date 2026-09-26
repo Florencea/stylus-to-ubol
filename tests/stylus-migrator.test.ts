@@ -1,5 +1,4 @@
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import { AstFilterParser } from "@gorhill/ubo-core/js/static-filtering-parser.js";
@@ -8,7 +7,6 @@ import {
   migrateStylusJsonDual,
   parseStylusSection,
 } from "../src/core/stylus-migrator.ts";
-import { runMigrateStylusCli } from "../src/cli/migrate-stylus.ts";
 import {
   filterTextToUbolConfig,
   getFiltersFromBackup,
@@ -426,88 +424,6 @@ describe("Stylus Migrator", () => {
     expect(roundTripped.customFilters).toEqual(nativeConfig.customFilters);
   });
 
-  it("runs CLI migrate-stylus correctly to file output", () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "stylus-cli-test-"));
-    const inputFile = path.join(tmpDir, "input.json");
-    const outputFile = path.join(tmpDir, "output.json");
-
-    const stylusData = [
-      {
-        enabled: true,
-        sections: [
-          {
-            code: ".banner { display: none !important; }",
-            domains: ["cli-test.com"],
-          },
-        ],
-      },
-    ];
-
-    fs.writeFileSync(inputFile, JSON.stringify(stylusData), "utf-8");
-    runMigrateStylusCli([inputFile, outputFile]);
-
-    const outputContent = fs.readFileSync(outputFile, "utf-8");
-    const parsed = JSON.parse(outputContent) as UbolConfig;
-    expect(isUbolConfig(parsed)).toBe(true);
-    expect(parsed.customFilters).toEqual([["cli-test.com", [".banner"]]]);
-
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  });
-
-  it("runs CLI migrate-stylus with --config preserving base settings and merging rules", () => {
-    const tmpDir = fs.mkdtempSync(
-      path.join(os.tmpdir(), "ubol-cli-test-config-"),
-    );
-    const inputFile = path.join(tmpDir, "input.json");
-    const configFile = path.join(tmpDir, "base.json");
-    const outputFile = path.join(tmpDir, "output.json");
-
-    const baseConfig = {
-      version: "2026.920.1710",
-      filteringModes: {
-        none: [],
-        basic: [],
-        optimal: ["all-urls"],
-        complete: [],
-      },
-      customFilters: [["existing.com", [".existing-hide"]]],
-      arbitraryData: 42,
-    };
-
-    const stylusData = [
-      {
-        enabled: true,
-        sections: [
-          {
-            code: ".new-hide { display: none !important; }",
-            domains: ["new.com"],
-          },
-        ],
-      },
-    ];
-
-    fs.writeFileSync(inputFile, JSON.stringify(stylusData), "utf-8");
-    fs.writeFileSync(configFile, JSON.stringify(baseConfig), "utf-8");
-
-    runMigrateStylusCli([inputFile, outputFile, "--config", configFile]);
-
-    const outputContent = fs.readFileSync(outputFile, "utf-8");
-    const parsed = JSON.parse(outputContent) as typeof baseConfig;
-
-    // Preserved non-customFilters settings
-    expect(parsed.version).toBe("2026.920.1710");
-    expect(parsed.filteringModes.optimal).toEqual(["all-urls"]);
-    expect(parsed.arbitraryData).toBe(42);
-
-    // Merged customFilters
-    expect(parsed.customFilters).toEqual([
-      ["existing.com", [".existing-hide"]],
-      ["new.com", [".new-hide"]],
-    ]);
-
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  });
-
   it("migrates real ubol-config-1.json into ubol-config.json format", () => {
     const c1Path = path.resolve(process.cwd(), "ubol-config-1.json");
     if (!fs.existsSync(c1Path)) return;
@@ -910,62 +826,6 @@ describe("Stylus Migrator", () => {
       for (const sel of sels) validateRuleWithUbo(`site.com##${sel}`);
     }
     for (const r of dual.mobile.sandboxFilters ?? []) validateRuleWithUbo(r);
-  });
-
-  it("runs CLI migrate-stylus with --dual producing desktop and mobile SSOT files", () => {
-    const tmpDir = fs.mkdtempSync(
-      path.join(os.tmpdir(), "ubol-dual-cli-test-"),
-    );
-    const inputPath = path.join(tmpDir, "stylus.json");
-    const stylusDualContent = JSON.stringify([
-      {
-        name: "ubo style desktop",
-        enabled: true,
-        sections: [
-          {
-            domains: ["example.com"],
-            code: ".d-hide { display: none; }",
-          },
-        ],
-      },
-      {
-        name: "ubo style mobile",
-        enabled: true,
-        sections: [
-          {
-            domains: ["example.com"],
-            code: "@media (pointer: coarse) { .m-hide { display: none; } }",
-          },
-        ],
-      },
-    ]);
-    fs.writeFileSync(inputPath, stylusDualContent, "utf-8");
-
-    const desktopOutput = path.join(tmpDir, "ubol-config-desktop.json");
-    const mobileOutput = path.join(tmpDir, "ubol-config-mobile.json");
-
-    runMigrateStylusCli([
-      inputPath,
-      path.join(tmpDir, "ubol-config.json"),
-      "--dual",
-    ]);
-
-    expect(fs.existsSync(desktopOutput)).toBe(true);
-    expect(fs.existsSync(mobileOutput)).toBe(true);
-
-    const desktopParsed = JSON.parse(
-      fs.readFileSync(desktopOutput, "utf-8"),
-    ) as UbolConfig;
-    const mobileParsed = JSON.parse(
-      fs.readFileSync(mobileOutput, "utf-8"),
-    ) as UbolConfig;
-
-    expect(desktopParsed.customFilters).toEqual([["example.com", [".d-hide"]]]);
-    expect(mobileParsed.customFilters).toEqual([
-      ["example.com", [".d-hide", ".m-hide"]],
-    ]);
-
-    fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
   it("migrates project stylus.json in dual mode successfully without uBO validation errors", () => {
