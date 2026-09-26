@@ -545,7 +545,10 @@ export const migrateStylusJsonDual = (
     let defaultScope: RuleScope = "global";
     if (styleName.includes("mobile") && !styleName.includes("desktop")) {
       defaultScope = "mobile";
-    } else if (styleName.includes("desktop") && !styleName.includes("mobile")) {
+    } else if (
+      styleName.includes("desktop-only") ||
+      styleName.includes("desktop only")
+    ) {
       defaultScope = "desktop";
     }
 

@@ -890,17 +890,16 @@ describe("Stylus Migrator", () => {
     ).toBe(false);
 
     // Mobile SSOT config
+    // In practice, desktop only applies "ubo style desktop", but mobile applies "ubo style desktop" + "ubo style mobile"
     expect(dual.mobile.customFilters).toEqual([
-      ["site.com", [".mobile-drawer"]],
+      ["site.com", [".desktop-sidebar", ".mobile-drawer"]],
     ]);
+    expect(dual.mobile.sandboxFilters).toContain(
+      "site.com##body:style(font-size: 15px !important;)",
+    );
     expect(dual.mobile.sandboxFilters).toContain(
       "site.com##body:style(font-size: 18px !important;)",
     );
-    expect(
-      dual.mobile.customFilters.some(([, sels]) =>
-        sels.includes(".desktop-sidebar"),
-      ),
-    ).toBe(false);
 
     // Validate rules with uBO parser
     for (const [, sels] of dual.desktop.customFilters) {
@@ -962,7 +961,9 @@ describe("Stylus Migrator", () => {
     ) as UbolConfig;
 
     expect(desktopParsed.customFilters).toEqual([["example.com", [".d-hide"]]]);
-    expect(mobileParsed.customFilters).toEqual([["example.com", [".m-hide"]]]);
+    expect(mobileParsed.customFilters).toEqual([
+      ["example.com", [".d-hide", ".m-hide"]],
+    ]);
 
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
