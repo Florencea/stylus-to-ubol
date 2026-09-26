@@ -2,6 +2,8 @@
 
 A serverless, pure frontend custom style management and debugging workbench using uBlock Origin Lite (uBOL) backup JSON as the single source of truth (SSOT).
 
+**Live Deployment**: [https://florencea.github.io/ubol-workbench/](https://florencea.github.io/ubol-workbench/)
+
 ## Core Deliverables
 
 1. **Static Hub (`index.html`)**
@@ -93,7 +95,9 @@ export type UbolBackup = z.infer<typeof UbolBackupSchema>;
 
 The project is deployed directly to GitHub Pages:
 
-1. **Workflow**: `.github/workflows/deploy.yml` builds the production distribution and deploys to GitHub Pages upon pushing to the `main` branch.
+- **Live URL**: [https://florencea.github.io/ubol-workbench/](https://florencea.github.io/ubol-workbench/)
+
+1. **Workflow**: `.github/workflows/deploy.yml` builds the production distribution and deploys to GitHub Pages automatically after `.github/workflows/ci.yml` passes on the `main` branch.
 2. **Path Portability**: `vite.config.ts` sets `base: './'` so assets resolve correctly under any repository name or subpath.
 3. **Repository Setup**: In GitHub repository settings under **Settings > Pages**, set **Source** to **GitHub Actions**.
 
