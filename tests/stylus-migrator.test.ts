@@ -900,10 +900,25 @@ describe("Stylus Migrator", () => {
     expect(isColorProperty("-webkit-text-fill-color")).toBe(true);
     expect(isColorProperty("-webkit-box-shadow")).toBe(true);
 
-    // Custom properties
-    expect(isColorProperty("--theme-primary")).toBe(true);
+    // Custom properties with color keyword in variable name
+    expect(isColorProperty("--theme-color")).toBe(true);
     expect(isColorProperty("--bg-color")).toBe(true);
-    expect(isColorProperty("--custom-spacing")).toBe(true);
+    expect(isColorProperty("--border-width")).toBe(true);
+    expect(isColorProperty("--icon-fill")).toBe(true);
+    expect(isColorProperty("--line-stroke")).toBe(true);
+
+    // Custom properties without color keyword: tested by value
+    expect(isColorProperty("--theme-primary", "#3b82f6")).toBe(true);
+    expect(isColorProperty("--theme-primary", "rgb(0, 0, 0)")).toBe(true);
+    expect(isColorProperty("--theme-primary", "red")).toBe(true);
+    expect(isColorProperty("--theme-primary", "transparent")).toBe(true);
+    expect(isColorProperty("--theme-primary", "oklch(0.7 0.15 150)")).toBe(
+      true,
+    );
+    expect(isColorProperty("--theme-primary")).toBe(false);
+    expect(isColorProperty("--theme-primary", "8px")).toBe(false);
+    expect(isColorProperty("--custom-spacing")).toBe(false);
+    expect(isColorProperty("--custom-spacing", "8px")).toBe(false);
 
     // Non-color properties
     expect(isColorProperty("opacity")).toBe(false);
@@ -1043,6 +1058,102 @@ describe("Stylus Migrator", () => {
     );
 
     for (const rule of [...result.cosmeticRules, ...result.styleRules]) {
+      validateRuleWithUbo(rule);
+    }
+  });
+
+  it("falls back to :matches-media for CSS variables containing non-color values", () => {
+    const css = `
+      :root {
+        --layout-spacing: 8px;
+        --card-opacity: 0.8;
+        --theme-accent: #ffffff;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --layout-spacing: 16px;
+          --card-opacity: 0.5;
+          --theme-accent: #000000;
+        }
+      }
+    `;
+    const result = parseStylusSection(css, ["example.com"]);
+    expect(result.cosmeticRules).toHaveLength(0);
+
+    // Color variable synthesizes light-dark()
+    const standardRootRule = result.styleRules.find(
+      (r) => r.includes("##:root:style") && !r.includes(":matches-media"),
+    );
+    expect(standardRootRule).toBeDefined();
+    expect(standardRootRule).toContain(
+      "--theme-accent: light-dark(#ffffff, #000000) !important;",
+    );
+    expect(standardRootRule).toContain("--layout-spacing: 8px !important;");
+    expect(standardRootRule).toContain("--card-opacity: 0.8 !important;");
+
+    // Non-color variables fall back to :matches-media
+    const darkRootRule = result.styleRules.find((r) =>
+      r.includes("##:root:matches-media((prefers-color-scheme: dark)):style"),
+    );
+    expect(darkRootRule).toBeDefined();
+    expect(darkRootRule).toContain("--layout-spacing: 16px !important;");
+    expect(darkRootRule).toContain("--card-opacity: 0.5 !important;");
+    expect(darkRootRule).not.toContain("--theme-accent");
+
+    for (const rule of result.styleRules) {
+      validateRuleWithUbo(rule);
+    }
+  });
+
+  it("converts custom media queries (e.g. @media (max-width: 600px)) to :matches-media((max-width: 600px)):style(...)", () => {
+    const css = `
+      .header {
+        height: 60px;
+      }
+      @media (max-width: 600px) {
+        .header {
+          height: 40px;
+          padding: 5px;
+        }
+        .sidebar {
+          display: none;
+        }
+      }
+      @media (min-width: 1200px) {
+        .container {
+          max-width: 1140px;
+        }
+      }
+    `;
+    const result = parseStylusSection(css, ["example.com"]);
+    expect(result.cosmeticRules).toHaveLength(0);
+
+    const standardHeader = result.styleRules.find(
+      (r) => r.includes(".header:style") && !r.includes(":matches-media"),
+    );
+    expect(standardHeader).toBeDefined();
+    expect(standardHeader).toContain("height: 60px !important;");
+
+    const mobileHeader = result.styleRules.find((r) =>
+      r.includes(".header:matches-media((max-width: 600px)):style"),
+    );
+    expect(mobileHeader).toBeDefined();
+    expect(mobileHeader).toContain("height: 40px !important;");
+    expect(mobileHeader).toContain("padding: 5px !important;");
+
+    const mobileSidebar = result.styleRules.find((r) =>
+      r.includes(".sidebar:matches-media((max-width: 600px)):style"),
+    );
+    expect(mobileSidebar).toBeDefined();
+    expect(mobileSidebar).toContain("display: none !important;");
+
+    const desktopContainer = result.styleRules.find((r) =>
+      r.includes(".container:matches-media((min-width: 1200px)):style"),
+    );
+    expect(desktopContainer).toBeDefined();
+    expect(desktopContainer).toContain("max-width: 1140px !important;");
+
+    for (const rule of result.styleRules) {
       validateRuleWithUbo(rule);
     }
   });

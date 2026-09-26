@@ -31,6 +31,7 @@ interface SelectorEntry {
   selector: string;
   lightMap: Map<string, string>;
   darkMap: Map<string, string>;
+  mediaQueryMap: Map<string, Map<string, string>>;
 }
 
 interface CompiledRules {
@@ -102,10 +103,191 @@ const COLOR_PROPERTIES = new Set([
   "text-decoration",
 ]);
 
-export const isColorProperty = (prop: string): boolean => {
+const CSS_NAMED_COLORS = new Set([
+  "aliceblue",
+  "antiquewhite",
+  "aqua",
+  "aquamarine",
+  "azure",
+  "beige",
+  "bisque",
+  "black",
+  "blanchedalmond",
+  "blue",
+  "blueviolet",
+  "brown",
+  "burlywood",
+  "cadetblue",
+  "chartreuse",
+  "chocolate",
+  "coral",
+  "cornflowerblue",
+  "cornsilk",
+  "crimson",
+  "cyan",
+  "darkblue",
+  "darkcyan",
+  "darkgoldenrod",
+  "darkgray",
+  "darkgreen",
+  "darkgrey",
+  "darkkhaki",
+  "darkmagenta",
+  "darkolivegreen",
+  "darkorange",
+  "darkorchid",
+  "darkred",
+  "darksalmon",
+  "darkseagreen",
+  "darkslateblue",
+  "darkslategray",
+  "darkslategrey",
+  "darkturquoise",
+  "darkviolet",
+  "deeppink",
+  "deepskyblue",
+  "dimgray",
+  "dimgrey",
+  "dodgerblue",
+  "firebrick",
+  "floralwhite",
+  "forestgreen",
+  "fuchsia",
+  "gainsboro",
+  "ghostwhite",
+  "gold",
+  "goldenrod",
+  "gray",
+  "green",
+  "greenyellow",
+  "grey",
+  "honeydew",
+  "hotpink",
+  "indianred",
+  "indigo",
+  "ivory",
+  "khaki",
+  "lavender",
+  "lavenderblush",
+  "lawngreen",
+  "lemonchiffon",
+  "lightblue",
+  "lightcoral",
+  "lightcyan",
+  "lightgoldenrodyellow",
+  "lightgray",
+  "lightgreen",
+  "lightgrey",
+  "lightpink",
+  "lightsalmon",
+  "lightseagreen",
+  "lightskyblue",
+  "lightslategray",
+  "lightslategrey",
+  "lightsteelblue",
+  "lightyellow",
+  "lime",
+  "limegreen",
+  "linen",
+  "magenta",
+  "maroon",
+  "mediumaquamarine",
+  "mediumblue",
+  "mediumorchid",
+  "mediumpurple",
+  "mediumseagreen",
+  "mediumslateblue",
+  "mediumspringgreen",
+  "mediumturquoise",
+  "mediumvioletred",
+  "midnightblue",
+  "mintcream",
+  "mistyrose",
+  "moccasin",
+  "navajowhite",
+  "navy",
+  "oldlace",
+  "olive",
+  "olivedrab",
+  "orange",
+  "orangered",
+  "orchid",
+  "palegoldenrod",
+  "palegreen",
+  "paleturquoise",
+  "palevioletred",
+  "papayawhip",
+  "peachpuff",
+  "peru",
+  "pink",
+  "plum",
+  "powderblue",
+  "purple",
+  "rebeccapurple",
+  "red",
+  "rosybrown",
+  "royalblue",
+  "saddlebrown",
+  "salmon",
+  "sandybrown",
+  "seagreen",
+  "seashell",
+  "sienna",
+  "silver",
+  "skyblue",
+  "slateblue",
+  "slategray",
+  "slategrey",
+  "snow",
+  "springgreen",
+  "steelblue",
+  "tan",
+  "teal",
+  "thistle",
+  "tomato",
+  "turquoise",
+  "violet",
+  "wheat",
+  "white",
+  "whitesmoke",
+  "yellow",
+  "yellowgreen",
+  "transparent",
+  "currentcolor",
+]);
+
+const VAR_COLOR_KEYWORDS = ["color", "bg", "border", "fill", "stroke"];
+
+const isColorValue = (val: string): boolean => {
+  const cleanVal = val
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\s*!important\s*$/i, "")
+    .trim()
+    .toLowerCase();
+  if (!cleanVal) return false;
+  if (/^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(cleanVal)) {
+    return true;
+  }
+  if (
+    /^(?:rgba?|hsla?|color|oklch|oklab|hwb|lab|lch|light-dark)\s*\(/i.test(
+      cleanVal,
+    )
+  ) {
+    return true;
+  }
+  return CSS_NAMED_COLORS.has(cleanVal);
+};
+
+export const isColorProperty = (prop: string, value?: string): boolean => {
   const normalized = prop.trim().toLowerCase();
   if (normalized.startsWith("--")) {
-    return true;
+    if (VAR_COLOR_KEYWORDS.some((kw) => normalized.includes(kw))) {
+      return true;
+    }
+    if (value !== undefined) {
+      return isColorValue(value);
+    }
+    return false;
   }
   const clean = normalized.replace(/^-(?:webkit|moz|ms|o)-/, "");
   if (clean.includes("color") || clean.includes("background")) {
@@ -123,56 +305,76 @@ const compileSelectorMapToRules = (
   let needsColorScheme = false;
 
   for (const entry of selectorMap.values()) {
-    const { selector, lightMap, darkMap } = entry;
+    const { selector, lightMap, darkMap, mediaQueryMap } = entry;
     const allProps = new Set([...lightMap.keys(), ...darkMap.keys()]);
-    if (allProps.size === 0) continue;
+    if (allProps.size === 0 && mediaQueryMap.size === 0) continue;
 
-    const isPureHide =
-      allProps.size === 1 &&
-      allProps.has("display") &&
-      (lightMap.get("display") ?? "").toLowerCase() === "none" &&
-      (!darkMap.has("display") ||
-        (darkMap.get("display") ?? "").toLowerCase() === "none");
+    if (allProps.size > 0) {
+      const isPureHide =
+        allProps.size === 1 &&
+        allProps.has("display") &&
+        (lightMap.get("display") ?? "").toLowerCase() === "none" &&
+        (!darkMap.has("display") ||
+          (darkMap.get("display") ?? "").toLowerCase() === "none");
 
-    if (isPureHide) {
-      cosmeticRules.push(`${prefix}${selector}`);
-      continue;
-    }
+      if (isPureHide) {
+        cosmeticRules.push(`${prefix}${selector}`);
+      } else {
+        const standardDecls: string[] = [];
+        const darkDecls: string[] = [];
 
-    const standardDecls: string[] = [];
-    const darkDecls: string[] = [];
+        for (const prop of allProps) {
+          const lightVal = lightMap.get(prop);
+          const darkVal = darkMap.get(prop);
 
-    for (const prop of allProps) {
-      const lightVal = lightMap.get(prop);
-      const darkVal = darkMap.get(prop);
-
-      if (lightVal !== undefined && darkVal !== undefined) {
-        if (lightVal === darkVal) {
-          standardDecls.push(`${prop}: ${lightVal} !important;`);
-        } else if (isColorProperty(prop)) {
-          standardDecls.push(
-            `${prop}: light-dark(${lightVal}, ${darkVal}) !important;`,
-          );
-          needsColorScheme = true;
-        } else {
-          standardDecls.push(`${prop}: ${lightVal} !important;`);
-          darkDecls.push(`${prop}: ${darkVal} !important;`);
+          if (lightVal !== undefined && darkVal !== undefined) {
+            if (lightVal === darkVal) {
+              standardDecls.push(`${prop}: ${lightVal} !important;`);
+            } else if (
+              isColorProperty(prop, lightVal) ||
+              isColorProperty(prop, darkVal)
+            ) {
+              standardDecls.push(
+                `${prop}: light-dark(${lightVal}, ${darkVal}) !important;`,
+              );
+              needsColorScheme = true;
+            } else {
+              standardDecls.push(`${prop}: ${lightVal} !important;`);
+              darkDecls.push(`${prop}: ${darkVal} !important;`);
+            }
+          } else if (lightVal !== undefined) {
+            standardDecls.push(`${prop}: ${lightVal} !important;`);
+          } else if (darkVal !== undefined) {
+            darkDecls.push(`${prop}: ${darkVal} !important;`);
+          }
         }
-      } else if (lightVal !== undefined) {
-        standardDecls.push(`${prop}: ${lightVal} !important;`);
-      } else if (darkVal !== undefined) {
-        darkDecls.push(`${prop}: ${darkVal} !important;`);
+
+        if (standardDecls.length > 0) {
+          styleRules.push(
+            `${prefix}${selector}:style(${standardDecls.join(" ")})`,
+          );
+        }
+
+        if (darkDecls.length > 0) {
+          styleRules.push(
+            `${prefix}${selector}:matches-media((prefers-color-scheme: dark)):style(${darkDecls.join(" ")})`,
+          );
+        }
       }
     }
 
-    if (standardDecls.length > 0) {
-      styleRules.push(`${prefix}${selector}:style(${standardDecls.join(" ")})`);
-    }
-
-    if (darkDecls.length > 0) {
-      styleRules.push(
-        `${prefix}${selector}:matches-media((prefers-color-scheme: dark)):style(${darkDecls.join(" ")})`,
-      );
+    if (mediaQueryMap.size > 0) {
+      for (const [queryCondition, declMap] of mediaQueryMap.entries()) {
+        const decls: string[] = [];
+        for (const [prop, val] of declMap.entries()) {
+          decls.push(`${prop}: ${val} !important;`);
+        }
+        if (decls.length > 0) {
+          styleRules.push(
+            `${prefix}${selector}:matches-media(${queryCondition}):style(${decls.join(" ")})`,
+          );
+        }
+      }
     }
   }
 
@@ -429,6 +631,7 @@ export const parseStylusSection = (
         selector,
         lightMap: new Map<string, string>(),
         darkMap: new Map<string, string>(),
+        mediaQueryMap: new Map<string, Map<string, string>>(),
       };
       map.set(selector, entry);
     }
@@ -441,16 +644,31 @@ export const parseStylusSection = (
     isLight: boolean;
     scope: RuleScope | null;
     raw: string;
+    genericCondition: string | null;
   }[] = [];
 
   customTree.walk(ast, {
     enter(node: csstree.CssNode) {
       if (node.type === "Atrule") {
         if (node.name === "media") {
-          const rawPrelude = node.prelude
-            ? customTree.generate(node.prelude)
-            : "";
-          const preludeStr = rawPrelude.toLowerCase();
+          const rawPrelude = node.prelude?.loc
+            ? css.slice(
+                node.prelude.loc.start.offset,
+                node.prelude.loc.end.offset,
+              )
+            : node.prelude
+              ? customTree.generate(node.prelude)
+              : "";
+          let cleanPrelude = rawPrelude
+            .replace(/\/\*[\s\S]*?\*\//g, "")
+            .trim()
+            .replace(/\s+/g, " ");
+
+          if (!node.prelude?.loc) {
+            cleanPrelude = cleanPrelude.replace(/:\s*([^\s)])/g, ": $1");
+          }
+
+          const preludeStr = cleanPrelude.toLowerCase();
           const isDark = /prefers-color-scheme\s*:\s*dark/.test(preludeStr);
           const isLight = /prefers-color-scheme\s*:\s*light/.test(preludeStr);
           const pointerCoarse = /pointer\s*:\s*coarse/.test(preludeStr);
@@ -459,12 +677,6 @@ export const parseStylusSection = (
             preludeStr,
           );
 
-          if (!isDark && !isLight && !pointerCoarse && !pointerFine) {
-            throw new Error(
-              `Unsupported @media query: ${rawPrelude}. @media is strictly forbidden in uBOL rules.`,
-            );
-          }
-
           let scope: RuleScope | null = null;
           if (pointerCoarse) {
             scope = notPointerCoarse ? "desktop" : "mobile";
@@ -472,7 +684,26 @@ export const parseStylusSection = (
             scope = "desktop";
           }
 
-          mediaStack.push({ isDark, isLight, scope, raw: preludeStr });
+          let genericCondition: string | null = null;
+          if (!isDark && !isLight) {
+            const isPurePointer =
+              (pointerCoarse || pointerFine) &&
+              !preludeStr.includes("max-") &&
+              !preludeStr.includes("min-") &&
+              !preludeStr.includes("width") &&
+              !preludeStr.includes("height");
+            if (!isPurePointer && cleanPrelude.length > 0) {
+              genericCondition = cleanPrelude;
+            }
+          }
+
+          mediaStack.push({
+            isDark,
+            isLight,
+            scope,
+            raw: preludeStr,
+            genericCondition,
+          });
         } else {
           return csstree.walk.skip;
         }
@@ -516,7 +747,10 @@ export const parseStylusSection = (
         const currentSels = selectorStack[selectorStack.length - 1];
         if (!currentSels || currentSels.length === 0) return;
 
-        const isDark = mediaStack.some((m) => m.isDark);
+        const genericConditions = mediaStack
+          .map((m) => m.genericCondition)
+          .filter((c): c is string => Boolean(c));
+
         const activeScope =
           [...mediaStack].reverse().find((m) => m.scope !== null)?.scope ??
           defaultScope;
@@ -532,10 +766,24 @@ export const parseStylusSection = (
 
         for (const sel of currentSels) {
           const entry = getOrCreateEntry(sel, activeScope);
-          if (isDark) {
-            entry.darkMap.set(prop, val);
+          if (genericConditions.length > 0) {
+            let condition = genericConditions.join(" and ");
+            if (mediaStack.some((m) => m.isDark)) {
+              condition = `${condition} and (prefers-color-scheme: dark)`;
+            }
+            let declMap = entry.mediaQueryMap.get(condition);
+            if (!declMap) {
+              declMap = new Map<string, string>();
+              entry.mediaQueryMap.set(condition, declMap);
+            }
+            declMap.set(prop, val);
           } else {
-            entry.lightMap.set(prop, val);
+            const isDark = mediaStack.some((m) => m.isDark);
+            if (isDark) {
+              entry.darkMap.set(prop, val);
+            } else {
+              entry.lightMap.set(prop, val);
+            }
           }
         }
       }

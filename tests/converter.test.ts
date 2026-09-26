@@ -117,15 +117,17 @@ describe("Converter Core", () => {
       for (const r of rules) validateRuleWithUbo(r);
     });
 
-    it("rejects unsupported @media queries (e.g. min-width)", () => {
+    it("compiles generic @media queries (e.g. min-width) to :matches-media", () => {
       const css = `
         @media (min-width: 768px) {
           .nav { display: flex; }
         }
       `;
-      expect(() => compileCssToUbolRules(css, "example.com")).toThrow(
-        /Unsupported @media query/,
-      );
+      const rules = compileCssToUbolRules(css, "example.com");
+      expect(rules).toEqual([
+        "example.com##.nav:matches-media((min-width: 768px)):style(display: flex !important;)",
+      ]);
+      for (const r of rules) validateRuleWithUbo(r);
     });
 
     it("handles empty CSS or rules without declarations gracefully", () => {
