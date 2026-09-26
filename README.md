@@ -1,5 +1,8 @@
 # stylus-to-ubol
 
+[![CI](https://github.com/Florencea/stylus-to-ubol/actions/workflows/ci.yml/badge.svg)](https://github.com/Florencea/vite-start-antd/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 A serverless, pure client-side one-way compiler converting Stylus export JSON into uBlock Origin Lite (uBOL) configuration JSON.
 
 **Live Deployment**: [https://florencea.github.io/stylus-to-ubol/](https://florencea.github.io/stylus-to-ubol/)
@@ -161,3 +164,7 @@ npm run build
 # Preview production build locally
 npm run preview
 ```
+
+## License
+
+[MIT](LICENSE)
