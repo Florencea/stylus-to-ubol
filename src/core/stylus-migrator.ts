@@ -62,6 +62,53 @@ export const normalizeSelector = (selector: string): string => {
     .trim();
 };
 
+const isEscaped = (str: string, index: number): boolean => {
+  let backslashCount = 0;
+  for (let i = index - 1; i >= 0 && str[i] === "\\"; i--) {
+    backslashCount++;
+  }
+  return backslashCount % 2 === 1;
+};
+
+export const formatStyleDeclarations = (
+  declarations:
+    | [string, string][]
+    | Map<string, string>
+    | ReadonlyMap<string, string>
+    | Iterable<[string, string]>,
+): string => {
+  const entries: [string, string][] = Array.isArray(declarations)
+    ? declarations
+    : declarations instanceof Map
+      ? Array.from(declarations.entries())
+      : Array.from(declarations);
+
+  const formattedDecls: string[] = [];
+
+  for (const [rawProp, rawVal] of entries) {
+    const prop = rawProp.trim();
+    if (prop.length === 0) {
+      continue;
+    }
+
+    let cleanVal = rawVal.trim();
+    while (
+      cleanVal.endsWith(";") &&
+      !isEscaped(cleanVal, cleanVal.length - 1)
+    ) {
+      cleanVal = cleanVal.slice(0, -1).trimEnd();
+    }
+
+    if (cleanVal.length === 0) {
+      continue;
+    }
+
+    formattedDecls.push(`${prop}: ${cleanVal}`);
+  }
+
+  return formattedDecls.join("; ");
+};
+
 const resolveSelectors = (
   parentSelectors: string[] | undefined,
   childSelectors: string[],
@@ -320,8 +367,8 @@ const compileSelectorMapToRules = (
       if (isPureHide) {
         cosmeticRules.push(`${prefix}${selector}`);
       } else {
-        const standardDecls: string[] = [];
-        const darkDecls: string[] = [];
+        const standardDecls: [string, string][] = [];
+        const darkDecls: [string, string][] = [];
 
         for (const prop of allProps) {
           const lightVal = lightMap.get(prop);
@@ -329,35 +376,36 @@ const compileSelectorMapToRules = (
 
           if (lightVal !== undefined && darkVal !== undefined) {
             if (lightVal === darkVal) {
-              standardDecls.push(`${prop}: ${lightVal} !important;`);
+              standardDecls.push([prop, `${lightVal} !important`]);
             } else if (
               isColorProperty(prop, lightVal) ||
               isColorProperty(prop, darkVal)
             ) {
-              standardDecls.push(
-                `${prop}: light-dark(${lightVal}, ${darkVal}) !important;`,
-              );
+              standardDecls.push([
+                prop,
+                `light-dark(${lightVal}, ${darkVal}) !important`,
+              ]);
               needsColorScheme = true;
             } else {
-              standardDecls.push(`${prop}: ${lightVal} !important;`);
-              darkDecls.push(`${prop}: ${darkVal} !important;`);
+              standardDecls.push([prop, `${lightVal} !important`]);
+              darkDecls.push([prop, `${darkVal} !important`]);
             }
           } else if (lightVal !== undefined) {
-            standardDecls.push(`${prop}: ${lightVal} !important;`);
+            standardDecls.push([prop, `${lightVal} !important`]);
           } else if (darkVal !== undefined) {
-            darkDecls.push(`${prop}: ${darkVal} !important;`);
+            darkDecls.push([prop, `${darkVal} !important`]);
           }
         }
 
-        if (standardDecls.length > 0) {
-          styleRules.push(
-            `${prefix}${selector}:style(${standardDecls.join(" ")})`,
-          );
+        const formattedStandard = formatStyleDeclarations(standardDecls);
+        if (formattedStandard.length > 0) {
+          styleRules.push(`${prefix}${selector}:style(${formattedStandard})`);
         }
 
-        if (darkDecls.length > 0) {
+        const formattedDark = formatStyleDeclarations(darkDecls);
+        if (formattedDark.length > 0) {
           styleRules.push(
-            `${prefix}${selector}:matches-media((prefers-color-scheme: dark)):style(${darkDecls.join(" ")})`,
+            `${prefix}${selector}:matches-media((prefers-color-scheme: dark)):style(${formattedDark})`,
           );
         }
       }
@@ -365,13 +413,14 @@ const compileSelectorMapToRules = (
 
     if (mediaQueryMap.size > 0) {
       for (const [queryCondition, declMap] of mediaQueryMap.entries()) {
-        const decls: string[] = [];
+        const decls: [string, string][] = [];
         for (const [prop, val] of declMap.entries()) {
-          decls.push(`${prop}: ${val} !important;`);
+          decls.push([prop, `${val} !important`]);
         }
-        if (decls.length > 0) {
+        const formattedMedia = formatStyleDeclarations(decls);
+        if (formattedMedia.length > 0) {
           styleRules.push(
-            `${prefix}${selector}:matches-media(${queryCondition}):style(${decls.join(" ")})`,
+            `${prefix}${selector}:matches-media(${queryCondition}):style(${formattedMedia})`,
           );
         }
       }
@@ -384,13 +433,21 @@ const compileSelectorMapToRules = (
       const rule = styleRules[i];
       if (
         rule &&
-        (rule.includes("##:root:style") || rule.includes("##html:style"))
+        (rule.includes("##:root:style(") || rule.includes("##html:style("))
       ) {
         if (!rule.includes("color-scheme:")) {
-          styleRules[i] = rule.replace(
-            /:style\(/,
-            ":style(color-scheme: light dark !important; ",
-          );
+          const styleMatch = /:style\(([\s\S]*)\)$/.exec(rule);
+          if (styleMatch) {
+            const existingContent = styleMatch[1]?.trim() ?? "";
+            const newContent =
+              existingContent.length > 0
+                ? `color-scheme: light dark !important; ${existingContent}`
+                : "color-scheme: light dark !important";
+            styleRules[i] = rule.replace(
+              /:style\([\s\S]*\)$/,
+              `:style(${newContent})`,
+            );
+          }
         }
         hasColorSchemeSet = true;
         break;
@@ -399,7 +456,7 @@ const compileSelectorMapToRules = (
 
     if (!hasColorSchemeSet) {
       styleRules.unshift(
-        `${prefix}:root:style(color-scheme: light dark !important;)`,
+        `${prefix}:root:style(${formatStyleDeclarations([["color-scheme", "light dark !important"]])})`,
       );
     }
   }
@@ -763,6 +820,7 @@ export const parseStylusSection = (
           .replace(/\/\*[\s\S]*?\*\//g, "")
           .replace(/\s*!important\s*$/i, "")
           .trim();
+        if (prop.length === 0 || val.length === 0) return;
 
         for (const sel of currentSels) {
           const entry = getOrCreateEntry(sel, activeScope);
