@@ -1,4 +1,4 @@
-import type { UbolBackup } from "../core/schema.ts";
+import { getFiltersFromBackup, type UbolBackup } from "../core/schema.ts";
 import {
   extractDomainsFromFilters,
   generateUserscriptHeader,
@@ -8,13 +8,14 @@ export const generateUserscriptBundle = (
   backup: UbolBackup,
   options?: { scriptName?: string; version?: string },
 ): string => {
-  const domains = extractDomainsFromFilters(backup.userResources.userFilters);
+  const filters = getFiltersFromBackup(backup);
+  const domains = extractDomainsFromFilters(filters);
   const header = generateUserscriptHeader(domains, {
     name: options?.scriptName ?? "uBOL In-Page Workbench",
     version: options?.version ?? "1.0.0",
   });
 
-  const serializedFilters = JSON.stringify(backup.userResources.userFilters);
+  const serializedFilters = JSON.stringify(filters);
 
   const runtimeCode = `
 (() => {

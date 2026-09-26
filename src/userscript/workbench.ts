@@ -3,7 +3,13 @@ import {
   parseUbolToCss,
   type Platform,
 } from "../core/converter.ts";
-import { UbolBackupSchema, type UbolBackup } from "../core/schema.ts";
+import {
+  filterTextToUbolConfig,
+  getFiltersFromBackup,
+  UbolBackupSchema,
+  type UbolBackup,
+  type UbolConfig,
+} from "../core/schema.ts";
 import {
   UbolWorkbenchModal,
   type DeadCodeItem,
@@ -273,6 +279,11 @@ export class UbolWorkbenchClient {
     return UbolBackupSchema.parse(backup);
   }
 
+  public exportUbolConfig(): UbolConfig {
+    const backup = this.exportBackup();
+    return filterTextToUbolConfig(getFiltersFromBackup(backup));
+  }
+
   public mount(container: HTMLElement = document.body): void {
     if (typeof document === "undefined") return;
 
@@ -290,8 +301,8 @@ export class UbolWorkbenchClient {
         this.recalculateAndApply();
       },
       onExport: () => {
-        const backup = this.exportBackup();
-        const blob = new Blob([JSON.stringify(backup, null, 2)], {
+        const config = this.exportUbolConfig();
+        const blob = new Blob([JSON.stringify(config, null, 2)], {
           type: "application/json",
         });
         const url = URL.createObjectURL(blob);

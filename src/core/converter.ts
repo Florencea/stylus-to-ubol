@@ -14,6 +14,105 @@ const cleanDeclValue = (val: string): string => {
   return val.replace(/\s*!important\s*$/i, "").trim();
 };
 
+export const normalizeSelector = (selector: string): string => {
+  return selector
+    .replace(
+      /(?<!:):(before|after|first-letter|first-line|placeholder)\b/g,
+      "::$1",
+    )
+    .trim();
+};
+
+export const splitSelectorList = (selector: string): string[] => {
+  const result: string[] = [];
+  let current = "";
+  let parenDepth = 0;
+  let bracketDepth = 0;
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+  let escape = false;
+
+  for (const char of selector) {
+    if (escape) {
+      current += char;
+      escape = false;
+      continue;
+    }
+
+    if (char === "\\") {
+      current += char;
+      escape = true;
+      continue;
+    }
+
+    if (inSingleQuote) {
+      current += char;
+      if (char === "'") inSingleQuote = false;
+      continue;
+    }
+
+    if (inDoubleQuote) {
+      current += char;
+      if (char === '"') inDoubleQuote = false;
+      continue;
+    }
+
+    if (char === "'") {
+      inSingleQuote = true;
+      current += char;
+      continue;
+    }
+
+    if (char === '"') {
+      inDoubleQuote = true;
+      current += char;
+      continue;
+    }
+
+    if (char === "(") {
+      parenDepth++;
+      current += char;
+      continue;
+    }
+
+    if (char === ")") {
+      if (parenDepth > 0) parenDepth--;
+      current += char;
+      continue;
+    }
+
+    if (char === "[") {
+      bracketDepth++;
+      current += char;
+      continue;
+    }
+
+    if (char === "]") {
+      if (bracketDepth > 0) bracketDepth--;
+      current += char;
+      continue;
+    }
+
+    if (char === "," && parenDepth === 0 && bracketDepth === 0) {
+      const trimmed = current.trim();
+      if (trimmed.length > 0) {
+        result.push(trimmed);
+      }
+      current = "";
+      continue;
+    }
+
+    current += char;
+  }
+
+  const trimmed = current.trim();
+  if (trimmed.length > 0) {
+    result.push(trimmed);
+  }
+
+  return result;
+};
+
 const matchesDomain = (domainPart: string, targetDomain: string): boolean => {
   if (domainPart.length === 0) return true;
 
@@ -218,9 +317,9 @@ export const compileCssToUbolRules = (
   };
 
   processed.walkRules((rule) => {
-    const normalizedSelector = rule.selector
-      .split(",")
-      .map((s) => s.trim())
+    const rawSelectors = splitSelectorList(rule.selector);
+    const normalizedSelector = rawSelectors
+      .map((s) => normalizeSelector(s))
       .filter((s) => s.length > 0)
       .join(", ");
 
@@ -315,9 +414,18 @@ export const compileCssToUbolRules = (
     }
 
     if (formattedDecls.length > 0) {
-      styleRules.push(
-        `${prefix}${entry.selector}:style(${formattedDecls.join(" ")})`,
-      );
+      const declPayload = formattedDecls.join(" ");
+      const combinedRule = `${prefix}${entry.selector}:style(${declPayload})`;
+      const uboParser = new AstFilterParser();
+      uboParser.parse(combinedRule);
+      if (!uboParser.hasError() && uboParser.isCosmeticFilter()) {
+        styleRules.push(combinedRule);
+      } else {
+        const subSelectors = splitSelectorList(entry.selector);
+        for (const sub of subSelectors) {
+          styleRules.push(`${prefix}${sub}:style(${declPayload})`);
+        }
+      }
     }
   }
 

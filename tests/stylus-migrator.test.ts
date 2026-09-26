@@ -4,7 +4,15 @@ import {
   migrateStylusJson,
   parseStylusSection,
 } from "../src/core/stylus-migrator.ts";
-import { UbolBackupSchema } from "../src/core/schema.ts";
+import {
+  filterTextToUbolConfig,
+  getFiltersFromBackup,
+  isUbolConfig,
+  UbolBackupSchema,
+  UbolConfigSchema,
+  ubolConfigToFilterText,
+  type UbolConfig,
+} from "../src/core/schema.ts";
 
 describe("Stylus Migrator", () => {
   const uboParser = new AstFilterParser();
@@ -219,9 +227,10 @@ describe("Stylus Migrator", () => {
 
     // Validate schema
     const parsed = UbolBackupSchema.parse(ubolBackup);
-    expect(parsed.schemaVersion).toBe(1);
+    expect(isUbolConfig(parsed)).toBe(false);
+    expect(ubolBackup.schemaVersion).toBe(1);
 
-    const filterLines = parsed.userResources.userFilters.split("\n");
+    const filterLines = ubolBackup.userResources.userFilters.split("\n");
     expect(filterLines.length).toBeGreaterThan(0);
 
     // Verify each line is valid uBO syntax
@@ -232,7 +241,7 @@ describe("Stylus Migrator", () => {
 
     // Verify multi-domain prefix
     expect(
-      filterLines.some((l) =>
+      filterLines.some((l: string) =>
         l.startsWith(
           "github.com,gist.github.com##.feed-left, #dashboard-sidebar",
         ),
@@ -241,11 +250,102 @@ describe("Stylus Migrator", () => {
 
     expect(
       filterLines.some(
-        (l) =>
+        (l: string) =>
           l.startsWith("github.com,gist.github.com##body:style") &&
           l.includes("light-dark") &&
           l.includes("!important"),
       ),
     ).toBe(true);
+  });
+
+  it("normalizes legacy single-colon pseudo-elements in Stylus CSS", () => {
+    const css = `
+      .detail-item:before, .manga-bar.active:after {
+        font-weight: 400 !important;
+      }
+    `;
+    const result = parseStylusSection(css, ["example.com"]);
+    expect(result.styleRules).toHaveLength(1);
+    expect(result.styleRules[0]).toContain("::before");
+    expect(result.styleRules[0]).toContain("::after");
+    if (result.styleRules[0]) {
+      validateRuleWithUbo(result.styleRules[0]);
+    }
+  });
+
+  it("safely handles comma-separated selector lists mixing procedural selectors and pseudo-elements", () => {
+    const css = `
+      body:has(#popup), .detail-selector-item::before, .view-bar {
+        background-color: #f0f0f0 !important;
+      }
+    `;
+    const result = parseStylusSection(css, ["example.com"]);
+    expect(result.styleRules.length).toBeGreaterThan(1);
+    for (const rule of result.styleRules) {
+      validateRuleWithUbo(rule);
+    }
+  });
+
+  it("handles complex selectors with commas inside :is, :not, and data URLs", () => {
+    const css = `
+      :is(code, kbd, pre, samp) {
+        font-family: monospace !important;
+      }
+      img[src="data:image/png;base64,iVBORw0KGgoAAA"] {
+        display: none !important;
+      }
+      body:not(:lang(en), :lang(fr)) {
+        line-height: 1.5 !important;
+      }
+    `;
+    const result = parseStylusSection(css, ["example.com"]);
+    expect(result.cosmeticRules).toEqual([
+      'example.com##img[src="data:image/png;base64,iVBORw0KGgoAAA"]',
+    ]);
+    for (const rule of [...result.cosmeticRules, ...result.styleRules]) {
+      validateRuleWithUbo(rule);
+    }
+  });
+
+  it("supports native uBOL config format (UbolConfigSchema) matching customFilters", () => {
+    const nativeConfig: UbolConfig = {
+      version: "2026.920.1710",
+      filteringModes: {
+        none: [],
+        basic: [],
+        optimal: ["all-urls"],
+        complete: [],
+      },
+      customFilters: [
+        [
+          "m.mobile01.com",
+          [
+            "#_popIniFrame",
+            "#share-bar",
+            ".app-open-btn",
+            'div:has(> [aria-label="cookieconsent"])',
+          ],
+        ],
+        ["vite.dev", [".VPDocAside > :not(.VPDocAsideOutline)"]],
+      ],
+    };
+
+    const parsed = UbolBackupSchema.parse(nativeConfig);
+    expect(isUbolConfig(parsed)).toBe(true);
+    expect(UbolConfigSchema.parse(nativeConfig)).toBeDefined();
+
+    const directFilterText = ubolConfigToFilterText(nativeConfig);
+    expect(directFilterText).toContain("m.mobile01.com###_popIniFrame");
+
+    const filterText = getFiltersFromBackup(parsed);
+    expect(filterText).toContain("m.mobile01.com###_popIniFrame");
+    expect(filterText).toContain(
+      "vite.dev##.VPDocAside > :not(.VPDocAsideOutline)",
+    );
+
+    const roundTripped = filterTextToUbolConfig(filterText, {
+      version: nativeConfig.version,
+    });
+    expect(roundTripped.customFilters).toEqual(nativeConfig.customFilters);
   });
 });

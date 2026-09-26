@@ -1,7 +1,8 @@
 import postcss from "postcss";
 import nested from "postcss-nested";
 import { AstFilterParser } from "@gorhill/ubo-core/js/static-filtering-parser.js";
-import { UbolBackupSchema, type UbolBackup } from "./schema.ts";
+import { normalizeSelector, splitSelectorList } from "./converter.ts";
+import { UbolLegacyBackupSchema, type UbolLegacyBackup } from "./schema.ts";
 
 export interface StylusSectionResult {
   cosmeticRules: string[];
@@ -90,9 +91,9 @@ export const parseStylusSection = (
 
   processed.walkRules((rule) => {
     // Normalize selector (normalize whitespace across multiline selectors)
-    const normalizedSelector = rule.selector
-      .split(",")
-      .map((s) => s.trim())
+    const rawSelectors = splitSelectorList(rule.selector);
+    const normalizedSelector = rawSelectors
+      .map((s) => normalizeSelector(s))
       .filter((s) => s.length > 0)
       .join(", ");
 
@@ -191,9 +192,18 @@ export const parseStylusSection = (
     }
 
     if (formattedDecls.length > 0) {
-      styleRules.push(
-        `${prefix}${entry.selector}:style(${formattedDecls.join(" ")})`,
-      );
+      const declPayload = formattedDecls.join(" ");
+      const combinedRule = `${prefix}${entry.selector}:style(${declPayload})`;
+      const uboParser = new AstFilterParser();
+      uboParser.parse(combinedRule);
+      if (!uboParser.hasError() && uboParser.isCosmeticFilter()) {
+        styleRules.push(combinedRule);
+      } else {
+        const subSelectors = splitSelectorList(entry.selector);
+        for (const sub of subSelectors) {
+          styleRules.push(`${prefix}${sub}:style(${declPayload})`);
+        }
+      }
     }
   }
 
@@ -231,7 +241,7 @@ export const parseStylusSection = (
   };
 };
 
-export const migrateStylusJson = (input: unknown): UbolBackup => {
+export const migrateStylusJson = (input: unknown): UbolLegacyBackup => {
   let parsedJson: unknown;
 
   if (typeof input === "string") {
@@ -293,12 +303,12 @@ export const migrateStylusJson = (input: unknown): UbolBackup => {
     }
   }
 
-  const backup: UbolBackup = {
+  const backup: UbolLegacyBackup = {
     userResources: {
       userFilters: allRules.join("\n"),
     },
     schemaVersion: 1,
   };
 
-  return UbolBackupSchema.parse(backup);
+  return UbolLegacyBackupSchema.parse(backup);
 };

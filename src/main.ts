@@ -1,4 +1,10 @@
-import { UbolBackupSchema, type UbolBackup } from "./core/schema.ts";
+import {
+  filterTextToUbolConfig,
+  getFiltersFromBackup,
+  isUbolConfig,
+  UbolBackupSchema,
+  type UbolBackup,
+} from "./core/schema.ts";
 import { migrateStylusJson } from "./core/stylus-migrator.ts";
 import {
   extractDomainsFromFilters,
@@ -38,7 +44,7 @@ const previewCodeEl = document.getElementById("userscript-preview");
 
 const updateHubView = (backup: UbolBackup): void => {
   currentBackup = backup;
-  const filters = backup.userResources.userFilters;
+  const filters = getFiltersFromBackup(backup);
 
   const domains = extractDomainsFromFilters(filters);
   const lines = filters.split("\n").map((l) => l.trim());
@@ -133,6 +139,22 @@ const setupEventListeners = (): void => {
     dropzone.classList.remove("dragover");
   });
 
+  const parseUbolInput = (text: string): UbolBackup => {
+    const json: unknown = JSON.parse(text);
+    if (
+      Array.isArray(json) &&
+      json.some(
+        (item) =>
+          typeof item === "object" &&
+          item !== null &&
+          ("sections" in item || "settings" in item),
+      )
+    ) {
+      return migrateStylusJson(json);
+    }
+    return UbolBackupSchema.parse(json);
+  };
+
   dropzone?.addEventListener("drop", (e) => {
     e.preventDefault();
     dropzone.classList.remove("dragover");
@@ -141,7 +163,7 @@ const setupEventListeners = (): void => {
       void file.text().then((text) => {
         if (ubolTextarea) ubolTextarea.value = text;
         try {
-          const parsed = UbolBackupSchema.parse(JSON.parse(text));
+          const parsed = parseUbolInput(text);
           updateHubView(parsed);
         } catch (err) {
           alert(
@@ -158,7 +180,7 @@ const setupEventListeners = (): void => {
       void file.text().then((text) => {
         if (ubolTextarea) ubolTextarea.value = text;
         try {
-          const parsed = UbolBackupSchema.parse(JSON.parse(text));
+          const parsed = parseUbolInput(text);
           updateHubView(parsed);
         } catch (err) {
           alert(
@@ -174,7 +196,7 @@ const setupEventListeners = (): void => {
   parseBtn?.addEventListener("click", () => {
     if (!ubolTextarea?.value.trim()) return;
     try {
-      const parsed = UbolBackupSchema.parse(JSON.parse(ubolTextarea.value));
+      const parsed = parseUbolInput(ubolTextarea.value);
       updateHubView(parsed);
     } catch (err) {
       alert(
@@ -234,7 +256,10 @@ const setupEventListeners = (): void => {
   const downloadUbolBtn = document.getElementById("btn-download-ubol");
   downloadUbolBtn?.addEventListener("click", () => {
     if (!currentBackup) return;
-    const blob = new Blob([JSON.stringify(currentBackup, null, 2)], {
+    const configToExport = isUbolConfig(currentBackup)
+      ? currentBackup
+      : filterTextToUbolConfig(getFiltersFromBackup(currentBackup));
+    const blob = new Blob([JSON.stringify(configToExport, null, 2)], {
       type: "application/json",
     });
     const url = URL.createObjectURL(blob);

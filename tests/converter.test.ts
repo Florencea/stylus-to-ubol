@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import { AstFilterParser } from "@gorhill/ubo-core/js/static-filtering-parser.js";
 import {
   compileCssToUbolRules,
+  normalizeSelector,
   parseUbolToCss,
+  splitSelectorList,
 } from "../src/core/converter.ts";
 
 describe("Converter Core", () => {
@@ -273,6 +275,47 @@ describe("Converter Core", () => {
       expect(rules).toEqual([
         "example.com##.modal:style(display: none !important; opacity: 0 !important;)",
       ]);
+      for (const r of rules) validateRuleWithUbo(r);
+    });
+
+    it("normalizes legacy single-colon pseudo-elements in selectors", () => {
+      expect(normalizeSelector(".btn:before")).toBe(".btn::before");
+      expect(normalizeSelector(".btn:after")).toBe(".btn::after");
+      expect(normalizeSelector(".text:first-letter")).toBe(
+        ".text::first-letter",
+      );
+      expect(normalizeSelector(".para:first-line")).toBe(".para::first-line");
+      expect(normalizeSelector("input:placeholder")).toBe("input::placeholder");
+      expect(normalizeSelector(".btn::before")).toBe(".btn::before");
+      expect(normalizeSelector(".btn:hover")).toBe(".btn:hover");
+    });
+
+    it("correctly splits selector lists without breaking nested parentheses or quotes", () => {
+      const complex =
+        ':is(code, kbd, pre, samp), #cursor, img[src="data:image/png;base64,iVBORw0KGgoAAA"], body:not(:lang(en), :lang(fr))';
+      const parts = splitSelectorList(complex);
+      expect(parts).toEqual([
+        ":is(code, kbd, pre, samp)",
+        "#cursor",
+        'img[src="data:image/png;base64,iVBORw0KGgoAAA"]',
+        "body:not(:lang(en), :lang(fr))",
+      ]);
+    });
+
+    it("handles style rules with mixed procedural selectors and pseudo-elements via fallback split", () => {
+      const css = `
+        body:has(#popup), .card::before {
+          background-color: #ff0000;
+        }
+      `;
+      const rules = compileCssToUbolRules(css, "example.com");
+      expect(rules).toHaveLength(2);
+      expect(rules[0]).toBe(
+        "example.com##body:has(#popup):style(background-color: #ff0000 !important;)",
+      );
+      expect(rules[1]).toBe(
+        "example.com##.card::before:style(background-color: #ff0000 !important;)",
+      );
       for (const r of rules) validateRuleWithUbo(r);
     });
   });
