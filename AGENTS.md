@@ -65,7 +65,6 @@ All checks must pass with zero errors and zero warnings.
 - `src/core/stylus-migrator.ts`: PostCSS AST converter for Stylus JSON export to uBOL backup format.
 - `src/main.ts`: Client-side converter controller, statistics computation, and JSON export triggers.
 - `src/style.css`: Minimalist converter UI stylesheet.
-- `src/stubs/node-stubs.ts`: Lightweight browser stubs for `path`, `fs`, and `source-map-js`.
 - `tests/`: Vitest unit tests (`converter.test.ts`, `main.test.ts`, `stylus-migrator.test.ts`).
 - `tests/e2e/`: Playwright end-to-end integration tests (`converter.spec.ts`).
 

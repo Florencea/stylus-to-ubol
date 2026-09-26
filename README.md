@@ -80,8 +80,6 @@ export type UbolConfig = z.infer<typeof UbolConfigSchema>;
 │   │   ├── converter.ts       # AST parsing and selector normalization helpers
 │   │   ├── schema.ts          # Zod validation schema
 │   │   └── stylus-migrator.ts # PostCSS Stylus migration utility
-│   ├── stubs/
-│   │   └── node-stubs.ts      # Browser stubs for path, fs, and source-map-js
 │   ├── types/
 │   │   └── ubo-core.d.ts      # TypeScript definitions for @gorhill/ubo-core
 │   ├── main.ts                # Client-side converter controller & stats computation
@@ -94,7 +92,7 @@ export type UbolConfig = z.infer<typeof UbolConfigSchema>;
 │       └── converter.spec.ts  # Playwright E2E integration tests
 ├── index.html                 # Static web entry point
 ├── playwright.config.ts       # Playwright E2E configuration
-├── vite.config.ts             # Vite configuration with relative base and stubs
+├── vite.config.ts             # Vite configuration with relative base and dependency pre-bundling
 └── vitest.config.ts           # Vitest unit test configuration
 ```
 

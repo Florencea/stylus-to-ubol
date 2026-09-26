@@ -57,9 +57,6 @@
     "node": "24.21.0"
   },
   "knip": {
-    "ignore": [
-      "src/stubs/**"
-    ],
     "ignoreBinaries": [
       "actionlint"
     ],
