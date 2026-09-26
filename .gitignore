@@ -23,7 +23,9 @@ dist-ssr
 *.sln
 *.sw?
 
-# Test artifacts
+# Test and cache artifacts
+.cache/
+.vitest/
 test-results/
 playwright-report/
 blob-report/
