@@ -8,7 +8,7 @@ export const isFilterProperty = (prop: string): boolean => {
   return /^(?:-webkit-)?(?:backdrop-)?filter$/i.test(prop);
 };
 
-const extractMatchesMedia = (
+export const extractMatchesMedia = (
   selector: string,
 ): { mediaQuery: string; restSelector: string } | null => {
   const match = /^:matches-media\(/.exec(selector);
@@ -66,7 +66,11 @@ export const normalizeSelector = (selector: string): string => {
     .trim();
 };
 
-export const splitSelectorList = (selector: string): string[] => {
+export const splitSelectorList = (
+  selector: string,
+  options?: { splitOnNewlines?: boolean },
+): string[] => {
+  const splitOnNewlines = options?.splitOnNewlines ?? false;
   const result: string[] = [];
   let current = "";
   let parenDepth = 0;
@@ -136,7 +140,11 @@ export const splitSelectorList = (selector: string): string[] => {
       continue;
     }
 
-    if (char === "," && parenDepth === 0 && bracketDepth === 0) {
+    if (
+      (char === "," || (splitOnNewlines && (char === "\n" || char === "\r"))) &&
+      parenDepth === 0 &&
+      bracketDepth === 0
+    ) {
       const trimmed = current.trim();
       if (trimmed.length > 0) {
         result.push(trimmed);
@@ -184,12 +192,12 @@ const matchesDomain = (domainPart: string, targetDomain: string): boolean => {
   });
 };
 
-interface ParsedCosmeticPattern {
+export interface ParsedCosmeticPattern {
   selector: string;
   styleContent?: string;
 }
 
-const parseCosmeticPattern = (
+export const parseCosmeticPattern = (
   pattern: string,
 ): ParsedCosmeticPattern | null => {
   const styleIdx = pattern.indexOf(":style(");
@@ -514,15 +522,8 @@ export const compileCssToUbolRules = (
 
     if (unconditionalDecls.length > 0) {
       const declPayload = unconditionalDecls.join(" ");
-      const combinedRule = `${prefix}${entry.selector}:style(${declPayload})`;
-      const uboParser = new AstFilterParser();
-      uboParser.parse(combinedRule);
-      if (!uboParser.hasError() && uboParser.isCosmeticFilter()) {
-        styleRules.push(combinedRule);
-      } else {
-        for (const sub of subSelectors) {
-          styleRules.push(`${prefix}${sub}:style(${declPayload})`);
-        }
+      for (const sub of subSelectors) {
+        styleRules.push(`${prefix}${sub}:style(${declPayload})`);
       }
     }
 

@@ -246,15 +246,8 @@ export const parseStylusSection = (
 
     if (unconditionalDecls.length > 0) {
       const declPayload = unconditionalDecls.join(" ");
-      const combinedRule = `${prefix}${entry.selector}:style(${declPayload})`;
-      const uboParser = new AstFilterParser();
-      uboParser.parse(combinedRule);
-      if (!uboParser.hasError() && uboParser.isCosmeticFilter()) {
-        styleRules.push(combinedRule);
-      } else {
-        for (const sub of subSelectors) {
-          styleRules.push(`${prefix}${sub}:style(${declPayload})`);
-        }
+      for (const sub of subSelectors) {
+        styleRules.push(`${prefix}${sub}:style(${declPayload})`);
       }
     }
 

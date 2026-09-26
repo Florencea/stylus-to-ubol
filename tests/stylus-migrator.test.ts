@@ -337,11 +337,15 @@ describe("Stylus Migrator", () => {
       }
     `;
     const result = parseStylusSection(css, ["example.com"]);
-    expect(result.styleRules).toHaveLength(1);
-    expect(result.styleRules[0]).toContain("::before");
-    expect(result.styleRules[0]).toContain("::after");
-    if (result.styleRules[0]) {
-      validateRuleWithUbo(result.styleRules[0]);
+    expect(result.styleRules).toHaveLength(2);
+    expect(result.styleRules[0]).toBe(
+      "example.com##.detail-item::before:style(font-weight: 400 !important;)",
+    );
+    expect(result.styleRules[1]).toBe(
+      "example.com##.manga-bar.active::after:style(font-weight: 400 !important;)",
+    );
+    for (const rule of result.styleRules) {
+      validateRuleWithUbo(rule);
     }
   });
 
@@ -751,9 +755,12 @@ describe("Stylus Migrator", () => {
     expect(result.customFilters).toHaveLength(0);
     expect(result.sandboxFilters).toBeDefined();
 
-    // Check base filter rule
+    // Check base filter rules (individual sub-selectors)
     expect(result.sandboxFilters).toContain(
-      "darksite.com##img, video:style(filter: grayscale(0.5) !important;)",
+      "darksite.com##img:style(filter: grayscale(0.5) !important;)",
+    );
+    expect(result.sandboxFilters).toContain(
+      "darksite.com##video:style(filter: grayscale(0.5) !important;)",
     );
 
     // Check dark filter rules (individual sub-selectors)
@@ -763,6 +770,38 @@ describe("Stylus Migrator", () => {
     expect(result.sandboxFilters).toContain(
       "darksite.com##:matches-media((prefers-color-scheme: dark)) video:style(filter: invert(1) hue-rotate(180deg) !important;)",
     );
+
+    for (const r of result.sandboxFilters ?? []) {
+      validateRuleWithUbo(r);
+    }
+  });
+
+  it("does not truncate :is() selectors with internal commas and emits individual :style rules", () => {
+    const stylusJson = JSON.stringify([
+      {
+        enabled: true,
+        sections: [
+          {
+            domains: ["github.com"],
+            code: `
+              :is(code, kbd, pre, samp), #read-only-cursor-text-area, .react-code-text, .text-mono, .blob-code-inner {
+                font-family: var(--stylus-font-monospace) !important;
+              }
+            `,
+          },
+        ],
+      },
+    ]);
+
+    const result = migrateStylusJson(stylusJson);
+    expect(result.customFilters).toHaveLength(0);
+    expect(result.sandboxFilters).toEqual([
+      "github.com###read-only-cursor-text-area:style(font-family: var(--stylus-font-monospace) !important;)",
+      "github.com##.blob-code-inner:style(font-family: var(--stylus-font-monospace) !important;)",
+      "github.com##.react-code-text:style(font-family: var(--stylus-font-monospace) !important;)",
+      "github.com##.text-mono:style(font-family: var(--stylus-font-monospace) !important;)",
+      "github.com##:is(code, kbd, pre, samp):style(font-family: var(--stylus-font-monospace) !important;)",
+    ]);
 
     for (const r of result.sandboxFilters ?? []) {
       validateRuleWithUbo(r);

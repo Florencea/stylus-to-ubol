@@ -1,6 +1,7 @@
 import {
   compileCssToUbolRules,
   parseUbolToCss,
+  splitSelectorList,
   type Platform,
 } from "../core/converter.ts";
 import {
@@ -83,10 +84,7 @@ export const diagnoseDeadCode = (
   const items: DeadCodeItem[] = [];
 
   // 1. Analyze hide selectors
-  const hideLines = hideText
-    .split(/[\n,]/)
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
+  const hideLines = splitSelectorList(hideText, { splitOnNewlines: true });
 
   for (const sel of hideLines) {
     let count: number;
@@ -113,10 +111,7 @@ export const diagnoseDeadCode = (
       const rawSelector = rule.slice(0, openBrace).trim();
       if (rawSelector.startsWith("@")) continue; // Skip at-rules
 
-      const subSelectors = rawSelector
-        .split(",")
-        .map((s) => s.trim())
-        .filter((s) => s.length > 0);
+      const subSelectors = splitSelectorList(rawSelector);
 
       for (const sel of subSelectors) {
         let count: number;
@@ -226,11 +221,9 @@ export class UbolWorkbenchClient {
   public recalculateAndApply(): void {
     const cssParts: string[] = [];
 
-    const cleanHide = this.hideText
-      .split(/[\n,]/)
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0)
-      .join(", ");
+    const cleanHide = splitSelectorList(this.hideText, {
+      splitOnNewlines: true,
+    }).join(", ");
 
     if (cleanHide.length > 0) {
       cssParts.push(`${cleanHide} {\n  display: none !important;\n}`);
@@ -255,11 +248,9 @@ export class UbolWorkbenchClient {
   public exportBackup(): UbolBackup {
     const cssParts: string[] = [];
 
-    const cleanHide = this.hideText
-      .split(/[\n,]/)
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0)
-      .join(", ");
+    const cleanHide = splitSelectorList(this.hideText, {
+      splitOnNewlines: true,
+    }).join(", ");
 
     if (cleanHide.length > 0) {
       cssParts.push(`${cleanHide} {\n  display: none !important;\n}`);
@@ -283,11 +274,9 @@ export class UbolWorkbenchClient {
   }
 
   public exportUbolConfig(): UbolConfig {
-    const cleanHide = this.hideText
-      .split(/[\n,]/)
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0)
-      .sort();
+    const cleanHide = splitSelectorList(this.hideText, {
+      splitOnNewlines: true,
+    }).sort();
 
     if (this.initialConfig) {
       const otherFilters = this.initialConfig.customFilters.filter(

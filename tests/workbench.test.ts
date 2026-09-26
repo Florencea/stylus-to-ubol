@@ -30,6 +30,35 @@ describe("Workbench Controller", () => {
     });
     expect(items[2]).toEqual({ selector: ".title", type: "style", count: 0 });
   });
+
+  it("does not split commas inside :is() or attribute selectors in dead code diagnostics", () => {
+    const fakeDoc = {
+      querySelectorAll: (sel: string) => {
+        if (sel === ":is(code, kbd, pre, samp)") {
+          return [{}] as unknown as NodeListOf<Element>;
+        }
+        if (sel === "#cursor") {
+          return [{}] as unknown as NodeListOf<Element>;
+        }
+        return [] as unknown as NodeListOf<Element>;
+      },
+    } as unknown as Document;
+
+    const items = diagnoseDeadCode(
+      ":is(code, kbd, pre, samp), #cursor\n.non-existent",
+      ":is(code, kbd, pre, samp), .react-code-text { font-family: monospace; }",
+      fakeDoc,
+    );
+
+    expect(items).toEqual([
+      { selector: ":is(code, kbd, pre, samp)", type: "hide", count: 1 },
+      { selector: "#cursor", type: "hide", count: 1 },
+      { selector: ".non-existent", type: "hide", count: 0 },
+      { selector: ":is(code, kbd, pre, samp)", type: "style", count: 1 },
+      { selector: ".react-code-text", type: "style", count: 0 },
+    ]);
+  });
+
   it("extracts unique target domains from uBOL filters", () => {
     const filters = `
       github.com##.feed-left

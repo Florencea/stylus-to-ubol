@@ -319,6 +319,23 @@ describe("Converter Core", () => {
       for (const r of rules) validateRuleWithUbo(r);
     });
 
+    it("compiles comma-separated selectors containing :is() with commas into individual :style rules", () => {
+      const css = `
+        :is(code, kbd, pre, samp), #read-only-cursor-text-area, .react-code-text, .text-mono, .blob-code-inner {
+          font-family: var(--stylus-font-monospace);
+        }
+      `;
+      const rules = compileCssToUbolRules(css, "github.com");
+      expect(rules).toEqual([
+        "github.com##:is(code, kbd, pre, samp):style(font-family: var(--stylus-font-monospace) !important;)",
+        "github.com###read-only-cursor-text-area:style(font-family: var(--stylus-font-monospace) !important;)",
+        "github.com##.react-code-text:style(font-family: var(--stylus-font-monospace) !important;)",
+        "github.com##.text-mono:style(font-family: var(--stylus-font-monospace) !important;)",
+        "github.com##.blob-code-inner:style(font-family: var(--stylus-font-monospace) !important;)",
+      ]);
+      for (const r of rules) validateRuleWithUbo(r);
+    });
+
     it("compiles filter statements in dark media queries to :matches-media without invalid light-dark()", () => {
       const css = `
         @media (prefers-color-scheme: dark) {

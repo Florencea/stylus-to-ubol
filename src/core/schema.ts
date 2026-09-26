@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { splitSelectorList } from "./converter.ts";
+import {
+  extractMatchesMedia,
+  parseCosmeticPattern,
+  splitSelectorList,
+} from "./converter.ts";
 
 export const UbolConfigSchema = z
   .object({
@@ -139,8 +143,30 @@ export const filterTextToUbolConfig = (
 
     if (rest.includes(":style(")) {
       // Style injection rules go directly into sandboxFilters
-      for (const d of domains) {
-        sandboxSet.add(`${d}##${rest}`);
+      const parsed = parseCosmeticPattern(rest);
+      if (parsed?.styleContent !== undefined) {
+        const mm = extractMatchesMedia(parsed.selector);
+        if (mm && mm.restSelector.length > 0) {
+          const subSelectors = splitSelectorList(mm.restSelector);
+          for (const d of domains) {
+            for (const sub of subSelectors) {
+              sandboxSet.add(
+                `${d}##:matches-media(${mm.mediaQuery}) ${sub}:style(${parsed.styleContent})`,
+              );
+            }
+          }
+        } else {
+          const subSelectors = splitSelectorList(parsed.selector);
+          for (const d of domains) {
+            for (const sub of subSelectors) {
+              sandboxSet.add(`${d}##${sub}:style(${parsed.styleContent})`);
+            }
+          }
+        }
+      } else {
+        for (const d of domains) {
+          sandboxSet.add(`${d}##${rest}`);
+        }
       }
     } else {
       // Pure cosmetic hide rules go into customFilters

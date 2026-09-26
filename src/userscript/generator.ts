@@ -26,6 +26,79 @@ export const generateUserscriptBundle = (
   const initialFilters = ${serializedFilters};
   const initialBackup = ${serializedBackup};
 
+  function splitSelectorList(selector, splitOnNewlines) {
+    const result = [];
+    let current = '';
+    let parenDepth = 0;
+    let bracketDepth = 0;
+    let inSingleQuote = false;
+    let inDoubleQuote = false;
+    let escape = false;
+
+    for (const char of selector) {
+      if (escape) {
+        current += char;
+        escape = false;
+        continue;
+      }
+      if (char === '\\\\') {
+        current += char;
+        escape = true;
+        continue;
+      }
+      if (inSingleQuote) {
+        current += char;
+        if (char === "'") inSingleQuote = false;
+        continue;
+      }
+      if (inDoubleQuote) {
+        current += char;
+        if (char === '"') inDoubleQuote = false;
+        continue;
+      }
+      if (char === "'") {
+        inSingleQuote = true;
+        current += char;
+        continue;
+      }
+      if (char === '"') {
+        inDoubleQuote = true;
+        current += char;
+        continue;
+      }
+      if (char === '(') {
+        parenDepth++;
+        current += char;
+        continue;
+      }
+      if (char === ')') {
+        if (parenDepth > 0) parenDepth--;
+        current += char;
+        continue;
+      }
+      if (char === '[') {
+        bracketDepth++;
+        current += char;
+        continue;
+      }
+      if (char === ']') {
+        if (bracketDepth > 0) bracketDepth--;
+        current += char;
+        continue;
+      }
+      if ((char === ',' || (splitOnNewlines && (char === '\\n' || char === '\\r'))) && parenDepth === 0 && bracketDepth === 0) {
+        const trimmed = current.trim();
+        if (trimmed.length > 0) result.push(trimmed);
+        current = '';
+        continue;
+      }
+      current += char;
+    }
+    const trimmed = current.trim();
+    if (trimmed.length > 0) result.push(trimmed);
+    return result;
+  }
+
   // 1. Converter Runtime
   function parseUbolToCss(filters, targetDomain, platform) {
     const lines = filters.split('\\n');
@@ -153,8 +226,11 @@ export const generateUserscriptBundle = (
       const decls = body.split(';').map(d => d.trim()).filter(Boolean);
       const isPureHide = !mediaQuery && decls.length === 1 && decls[0].toLowerCase().startsWith('display:') && decls[0].toLowerCase().includes('none');
 
+      const subSelectors = splitSelectorList(sel);
       if (isPureHide) {
-        rules.push(prefix + sel);
+        for (const sub of subSelectors) {
+          rules.push(prefix + sub);
+        }
       } else {
         const formatted = decls.map(d => {
           const clean = d.replace(/\\s*!important\\s*$/i, '').trim();
@@ -162,12 +238,13 @@ export const generateUserscriptBundle = (
         }).join(' ');
 
         if (mediaQuery) {
-          const subSelectors = sel.split(',').map(s => s.trim()).filter(Boolean);
           for (const sub of subSelectors) {
             rules.push(prefix + ':matches-media(' + mediaQuery + ') ' + sub + ':style(' + formatted + ')');
           }
         } else {
-          rules.push(prefix + sel + ':style(' + formatted + ')');
+          for (const sub of subSelectors) {
+            rules.push(prefix + sub + ':style(' + formatted + ')');
+          }
         }
       }
     }
@@ -211,7 +288,7 @@ export const generateUserscriptBundle = (
   // 2. Dead Code Analyzer
   function diagnoseDeadCode(hideText, styleCss) {
     const items = [];
-    const hideLines = hideText.split(/[\\n,]/).map(s => s.trim()).filter(Boolean);
+    const hideLines = splitSelectorList(hideText, true);
     for (const sel of hideLines) {
       let count = 0;
       try { count = document.querySelectorAll(sel).length; } catch { count = 0; }
@@ -224,7 +301,7 @@ export const generateUserscriptBundle = (
       if (open === -1) continue;
       const rawSel = block.slice(0, open).trim();
       if (rawSel.startsWith('@')) continue;
-      const subSelectors = rawSel.split(',').map(s => s.trim()).filter(Boolean);
+      const subSelectors = splitSelectorList(rawSel);
       for (const sel of subSelectors) {
         let count = 0;
         try { count = document.querySelectorAll(sel).length; } catch { count = 0; }
@@ -429,7 +506,7 @@ export const generateUserscriptBundle = (
 
   function applyStyles() {
     const parts = [];
-    const cleanHide = currentHide.split(/[\\n,]/).map(s => s.trim()).filter(Boolean).join(', ');
+    const cleanHide = splitSelectorList(currentHide, true).join(', ');
     if (cleanHide) parts.push(cleanHide + ' {\\n  display: none !important;\\n}');
     if (currentStyle.trim()) parts.push(currentStyle.trim());
     styleEl.textContent = parts.join('\\n\\n');
@@ -442,7 +519,7 @@ export const generateUserscriptBundle = (
     onStyleChange: (text) => { currentStyle = text; applyStyles(); },
     onRescan: () => { modalEl.updateDiagnostics(diagnoseDeadCode(currentHide, currentStyle)); },
     onExport: () => {
-      const cleanHide = currentHide.split(/[\\n,]/).map(s => s.trim()).filter(Boolean).sort();
+      const cleanHide = splitSelectorList(currentHide, true).sort();
       let exportConfig;
       if (initialBackup && typeof initialBackup === 'object' && Array.isArray(initialBackup.customFilters)) {
         const otherFilters = initialBackup.customFilters.filter(([domain]) => domain !== targetDomain);
