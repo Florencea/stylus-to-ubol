@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { AstFilterParser } from "@gorhill/ubo-core/js/static-filtering-parser.js";
 import {
   migrateStylusJson,
+  migrateStylusJsonAll,
   migrateStylusJsonDual,
   parseStylusSection,
 } from "../src/core/stylus-migrator.ts";
@@ -424,26 +425,6 @@ describe("Stylus Migrator", () => {
     expect(roundTripped.customFilters).toEqual(nativeConfig.customFilters);
   });
 
-  it("migrates real ubol-config-1.json into ubol-config.json format", () => {
-    const c1Path = path.resolve(process.cwd(), "ubol-config-1.json");
-    if (!fs.existsSync(c1Path)) return;
-
-    const c1Content = fs.readFileSync(c1Path, "utf-8");
-    const migrated = migrateStylusJson(c1Content);
-
-    expect(isUbolConfig(migrated)).toBe(true);
-    expect(UbolConfigSchema.parse(migrated)).toBeDefined();
-
-    // Verify key domains from ubol-config.json are present
-    const domains = migrated.customFilters.map(([d]) => d);
-    expect(domains).toContain("m.mobile01.com");
-    expect(domains).toContain("nebula.zyxel.com");
-    expect(domains).toContain("share.dmhy.org");
-    expect(domains).toContain("vite.dev");
-    expect(domains).toContain("www.elle.com");
-    expect(domains).toContain("www.mobile01.com");
-  });
-
   it("splits rules cleanly into customFilters (pure hide) and sandboxFilters (:style injection)", () => {
     const stylusInput = [
       {
@@ -826,6 +807,53 @@ describe("Stylus Migrator", () => {
       for (const sel of sels) validateRuleWithUbo(`site.com##${sel}`);
     }
     for (const r of dual.mobile.sandboxFilters ?? []) validateRuleWithUbo(r);
+  });
+
+  it("migrates Stylus dual styles in a single pass into desktop, mobile, and complete configs", () => {
+    const stylusDualJson = [
+      {
+        name: "Base Style",
+        enabled: true,
+        sections: [
+          {
+            domains: ["site.com"],
+            code: `
+              .global-hide { display: none !important; }
+              @media (pointer: fine) {
+                .desktop-hide { display: none !important; }
+              }
+              @media (pointer: coarse) {
+                .mobile-hide { display: none !important; }
+              }
+            `,
+          },
+        ],
+      },
+    ];
+
+    const all = migrateStylusJsonAll(stylusDualJson);
+
+    expect(all.desktop).toBeDefined();
+    expect(all.mobile).toBeDefined();
+    expect(all.complete).toBeDefined();
+
+    // Desktop gets global + desktop
+    const desktopSels = all.desktop.customFilters[0]?.[1] ?? [];
+    expect(desktopSels).toContain(".global-hide");
+    expect(desktopSels).toContain(".desktop-hide");
+    expect(desktopSels).not.toContain(".mobile-hide");
+
+    // Mobile gets global + mobile
+    const mobileSels = all.mobile.customFilters[0]?.[1] ?? [];
+    expect(mobileSels).toContain(".global-hide");
+    expect(mobileSels).toContain(".mobile-hide");
+    expect(mobileSels).not.toContain(".desktop-hide");
+
+    // Complete gets global + desktop + mobile
+    const completeSels = all.complete.customFilters[0]?.[1] ?? [];
+    expect(completeSels).toContain(".global-hide");
+    expect(completeSels).toContain(".desktop-hide");
+    expect(completeSels).toContain(".mobile-hide");
   });
 
   it("migrates project stylus.json in dual mode successfully without uBO validation errors", () => {

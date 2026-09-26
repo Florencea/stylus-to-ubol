@@ -2,9 +2,7 @@ import postcss from "postcss";
 import nested from "postcss-nested";
 import { AstFilterParser } from "@gorhill/ubo-core/js/static-filtering-parser.js";
 
-export type Platform = "desktop" | "mobile";
-
-export const isFilterProperty = (prop: string): boolean => {
+const isFilterProperty = (prop: string): boolean => {
   return /^(?:-webkit-)?(?:backdrop-)?filter$/i.test(prop);
 };
 
@@ -46,7 +44,7 @@ export const extractMatchesMedia = (
   return { mediaQuery, restSelector };
 };
 
-interface SelectorStyles {
+export interface SelectorStyles {
   selector: string;
   baseDecls: Map<string, string>;
   lightDecls: Map<string, string>;
@@ -164,34 +162,6 @@ export const splitSelectorList = (
   return result;
 };
 
-const matchesDomain = (domainPart: string, targetDomain: string): boolean => {
-  if (domainPart.length === 0) return true;
-
-  const tokens = domainPart
-    .split(",")
-    .map((t) => t.trim())
-    .filter((t) => t.length > 0);
-
-  const target = targetDomain.toLowerCase();
-
-  for (const token of tokens) {
-    if (token.startsWith("~")) {
-      const negDomain = token.slice(1).toLowerCase();
-      if (target === negDomain || target.endsWith(`.${negDomain}`)) {
-        return false;
-      }
-    }
-  }
-
-  const positiveTokens = tokens.filter((t) => !t.startsWith("~"));
-  if (positiveTokens.length === 0) return true;
-
-  return positiveTokens.some((token) => {
-    const pos = token.toLowerCase();
-    return pos === "*" || target === pos || target.endsWith(`.${pos}`);
-  });
-};
-
 export interface ParsedCosmeticPattern {
   selector: string;
   styleContent?: string;
@@ -239,194 +209,15 @@ export const parseCosmeticPattern = (
   };
 };
 
-export const parseUbolToCss = (
-  filters: string,
-  targetDomain: string,
-  platform: Platform,
-): string => {
-  const lines = filters.split("\n");
-  const cssBlocks: string[] = [];
+export interface CompiledRules {
+  cosmeticRules: string[];
+  styleRules: string[];
+}
 
-  const ifStack: boolean[] = [];
-
-  for (const rawLine of lines) {
-    const line = rawLine.trim();
-    if (line.length === 0) continue;
-
-    // Preprocessor directives
-    if (line.startsWith("!#")) {
-      if (line.startsWith("!#if")) {
-        const rawExpr = line.slice(4).trim();
-        const expr = rawExpr.replace(/^\((.*)\)$/, "$1").trim();
-        let condition = false;
-
-        if (expr === "env_mobile") {
-          condition = platform === "mobile";
-        } else if (expr === "!env_mobile") {
-          condition = platform !== "mobile";
-        }
-
-        ifStack.push(condition);
-      } else if (line.startsWith("!#else")) {
-        if (ifStack.length > 0) {
-          const current = ifStack.pop();
-          ifStack.push(!current);
-        }
-      } else if (line.startsWith("!#endif")) {
-        ifStack.pop();
-      }
-      continue;
-    }
-
-    // Ignore lines suppressed by inactive preprocessor branches
-    if (ifStack.some((active) => !active)) {
-      continue;
-    }
-
-    // Comments & network filters
-    if (
-      line.startsWith("!") ||
-      (line.startsWith("#") &&
-        !line.startsWith("##") &&
-        !line.startsWith("#@#"))
-    ) {
-      continue;
-    }
-
-    const hashIdx = line.indexOf("##");
-    if (hashIdx === -1) continue;
-
-    const domainPart = line.slice(0, hashIdx).trim();
-    const restPart = line.slice(hashIdx + 2).trim();
-
-    if (!matchesDomain(domainPart, targetDomain)) {
-      continue;
-    }
-
-    const parsed = parseCosmeticPattern(restPart);
-    if (!parsed) continue;
-
-    if (parsed.styleContent !== undefined) {
-      const decls = parsed.styleContent
-        .split(";")
-        .map((d) => d.trim())
-        .filter((d) => d.length > 0)
-        .map((d) => `  ${d};`)
-        .join("\n");
-
-      const mm = extractMatchesMedia(parsed.selector);
-      if (mm && mm.restSelector.length > 0) {
-        const indentedDecls = decls
-          .split("\n")
-          .map((line) => `  ${line}`)
-          .join("\n");
-        cssBlocks.push(
-          `@media ${mm.mediaQuery} {\n  ${mm.restSelector} {\n${indentedDecls}\n  }\n}`,
-        );
-      } else {
-        cssBlocks.push(`${parsed.selector} {\n${decls}\n}`);
-      }
-    } else {
-      const mm = extractMatchesMedia(parsed.selector);
-      if (mm && mm.restSelector.length > 0) {
-        cssBlocks.push(
-          `@media ${mm.mediaQuery} {\n  ${mm.restSelector} {\n    display: none !important;\n  }\n}`,
-        );
-      } else {
-        cssBlocks.push(`${parsed.selector} {\n  display: none !important;\n}`);
-      }
-    }
-  }
-
-  return cssBlocks.join("\n\n");
-};
-
-export const compileCssToUbolRules = (
-  css: string,
-  domain: string,
-): string[] => {
-  if (css.trim().length === 0) return [];
-
-  const prefix = domain.trim().length > 0 ? `${domain.trim()}##` : "##";
-
-  // Process nesting first
-  const processed = postcss([nested()]).process(css, { from: undefined }).root;
-
-  // Verify at-rules: reject unsupported @media
-  processed.walkAtRules((atRule) => {
-    if (atRule.name === "media") {
-      const params = atRule.params.toLowerCase();
-      const isPrefersScheme =
-        params.includes("prefers-color-scheme: dark") ||
-        params.includes("prefers-color-scheme: light") ||
-        params.includes("prefers-color-scheme:dark") ||
-        params.includes("prefers-color-scheme:light");
-
-      if (!isPrefersScheme) {
-        throw new Error(
-          `Unsupported @media query: ${atRule.params}. @media is strictly forbidden in uBOL rules.`,
-        );
-      }
-    }
-  });
-
-  const selectorMap = new Map<string, SelectorStyles>();
-
-  const getOrCreateSelector = (selector: string): SelectorStyles => {
-    let entry = selectorMap.get(selector);
-    if (!entry) {
-      entry = {
-        selector,
-        baseDecls: new Map<string, string>(),
-        lightDecls: new Map<string, string>(),
-        darkDecls: new Map<string, string>(),
-      };
-      selectorMap.set(selector, entry);
-    }
-    return entry;
-  };
-
-  processed.walkRules((rule) => {
-    const rawSelectors = splitSelectorList(rule.selector);
-    const normalizedSelector = rawSelectors
-      .map((s) => normalizeSelector(s))
-      .filter((s) => s.length > 0)
-      .join(", ");
-
-    if (normalizedSelector.length === 0) return;
-
-    let isDarkMedia = false;
-    let isLightMedia = false;
-
-    let parent = rule.parent;
-    while (parent && parent.type !== "root") {
-      if (parent.type === "atrule" && parent.name === "media") {
-        const params = parent.params.toLowerCase();
-        if (/prefers-color-scheme\s*:\s*dark/.test(params)) {
-          isDarkMedia = true;
-        } else if (/prefers-color-scheme\s*:\s*light/.test(params)) {
-          isLightMedia = true;
-        }
-      }
-      parent = parent.parent;
-    }
-
-    const entry = getOrCreateSelector(normalizedSelector);
-
-    rule.walkDecls((decl) => {
-      const prop = decl.prop.trim();
-      const val = decl.value.trim();
-
-      if (isDarkMedia) {
-        entry.darkDecls.set(prop, val);
-      } else if (isLightMedia) {
-        entry.lightDecls.set(prop, val);
-      } else {
-        entry.baseDecls.set(prop, val);
-      }
-    });
-  });
-
+export const compileSelectorMapToRules = (
+  selectorMap: Map<string, SelectorStyles>,
+  prefix: string,
+): CompiledRules => {
   const cosmeticRules: string[] = [];
   const styleRules: string[] = [];
   let needsColorScheme = false;
@@ -571,6 +362,100 @@ export const compileCssToUbolRules = (
       );
     }
   }
+
+  return { cosmeticRules, styleRules };
+};
+
+export const compileCssToUbolRules = (
+  css: string,
+  domain: string,
+): string[] => {
+  if (css.trim().length === 0) return [];
+
+  const prefix = domain.trim().length > 0 ? `${domain.trim()}##` : "##";
+
+  // Process nesting first
+  const processed = postcss([nested()]).process(css, { from: undefined }).root;
+
+  // Verify at-rules: reject unsupported @media
+  processed.walkAtRules((atRule) => {
+    if (atRule.name === "media") {
+      const params = atRule.params.toLowerCase();
+      const isPrefersScheme =
+        params.includes("prefers-color-scheme: dark") ||
+        params.includes("prefers-color-scheme: light") ||
+        params.includes("prefers-color-scheme:dark") ||
+        params.includes("prefers-color-scheme:light");
+
+      if (!isPrefersScheme) {
+        throw new Error(
+          `Unsupported @media query: ${atRule.params}. @media is strictly forbidden in uBOL rules.`,
+        );
+      }
+    }
+  });
+
+  const selectorMap = new Map<string, SelectorStyles>();
+
+  const getOrCreateSelector = (selector: string): SelectorStyles => {
+    let entry = selectorMap.get(selector);
+    if (!entry) {
+      entry = {
+        selector,
+        baseDecls: new Map<string, string>(),
+        lightDecls: new Map<string, string>(),
+        darkDecls: new Map<string, string>(),
+      };
+      selectorMap.set(selector, entry);
+    }
+    return entry;
+  };
+
+  processed.walkRules((rule) => {
+    const rawSelectors = splitSelectorList(rule.selector);
+    const normalizedSelector = rawSelectors
+      .map((s) => normalizeSelector(s))
+      .filter((s) => s.length > 0)
+      .join(", ");
+
+    if (normalizedSelector.length === 0) return;
+
+    let isDarkMedia = false;
+    let isLightMedia = false;
+
+    let parent = rule.parent;
+    while (parent && parent.type !== "root") {
+      if (parent.type === "atrule" && parent.name === "media") {
+        const params = parent.params.toLowerCase();
+        if (/prefers-color-scheme\s*:\s*dark/.test(params)) {
+          isDarkMedia = true;
+        } else if (/prefers-color-scheme\s*:\s*light/.test(params)) {
+          isLightMedia = true;
+        }
+      }
+      parent = parent.parent;
+    }
+
+    const entry = getOrCreateSelector(normalizedSelector);
+
+    rule.walkDecls((decl) => {
+      const prop = decl.prop.trim();
+      const val = decl.value.trim();
+
+      if (isDarkMedia) {
+        entry.darkDecls.set(prop, val);
+      } else if (isLightMedia) {
+        entry.lightDecls.set(prop, val);
+      } else {
+        entry.baseDecls.set(prop, val);
+      }
+    });
+  });
+
+  const { cosmeticRules, styleRules } = compileSelectorMapToRules(
+    selectorMap,
+    prefix,
+  );
 
   const uboParser = new AstFilterParser();
   const allRules = [...cosmeticRules, ...styleRules];

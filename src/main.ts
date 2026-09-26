@@ -1,8 +1,5 @@
 import { isUbolConfig, type UbolConfig } from "./core/schema.ts";
-import {
-  migrateStylusJson,
-  migrateStylusJsonDual,
-} from "./core/stylus-migrator.ts";
+import { migrateStylusJsonAll } from "./core/stylus-migrator.ts";
 
 export interface ConversionStats {
   domainCount: number;
@@ -138,17 +135,16 @@ export const convertStylusContent = (rawText: string): ConversionResult => {
 
   validateStylusData(parsed);
 
-  const dual = migrateStylusJsonDual(parsed);
-  const complete = migrateStylusJson(parsed);
+  const configs = migrateStylusJsonAll(parsed);
 
-  const desktopStats = computeConfigStats(dual.desktop);
-  const mobileStats = computeConfigStats(dual.mobile);
-  const completeStats = computeConfigStats(complete);
+  const desktopStats = computeConfigStats(configs.desktop);
+  const mobileStats = computeConfigStats(configs.mobile);
+  const completeStats = computeConfigStats(configs.complete);
 
   return {
-    desktop: dual.desktop,
-    mobile: dual.mobile,
-    complete,
+    desktop: configs.desktop,
+    mobile: configs.mobile,
+    complete: configs.complete,
     desktopStats,
     mobileStats,
     completeStats,

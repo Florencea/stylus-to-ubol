@@ -3,7 +3,6 @@ import { AstFilterParser } from "@gorhill/ubo-core/js/static-filtering-parser.js
 import {
   compileCssToUbolRules,
   normalizeSelector,
-  parseUbolToCss,
   splitSelectorList,
 } from "../src/core/converter.ts";
 
@@ -17,139 +16,6 @@ describe("Converter Core", () => {
       true,
     );
   };
-
-  describe("parseUbolToCss", () => {
-    it("parses cosmetic hide rules into CSS with display: none !important", () => {
-      const filters = `
-        example.com##.ad-banner, #sidebar
-        example.com##.popup
-      `;
-      const css = parseUbolToCss(filters, "example.com", "desktop");
-      expect(css).toContain(
-        ".ad-banner, #sidebar {\n  display: none !important;\n}",
-      );
-      expect(css).toContain(".popup {\n  display: none !important;\n}");
-    });
-
-    it("parses style injection rules into CSS preserving declarations", () => {
-      const filters = `
-        example.com##.content:style(color: light-dark(#000, #fff) !important; background: #fff !important;)
-      `;
-      const css = parseUbolToCss(filters, "example.com", "desktop");
-      expect(css).toContain(
-        ".content {\n  color: light-dark(#000, #fff) !important;\n  background: #fff !important;\n}",
-      );
-    });
-
-    it("handles complex selectors with pseudo-classes like :has and :not before :style", () => {
-      const filters = `
-        example.com##article:not(.featured):has(> .badge):style(opacity: 0.8 !important;)
-      `;
-      const css = parseUbolToCss(filters, "example.com", "desktop");
-      expect(css).toContain(
-        "article:not(.featured):has(> .badge) {\n  opacity: 0.8 !important;\n}",
-      );
-    });
-
-    it("handles domain matching: exact, subdomain, negation, and multiple domains", () => {
-      const filters = `
-        example.com##.hide-on-example
-        sub.example.com##.hide-on-sub
-        example.com,~bad.example.com##.hide-except-bad
-        other.com##.hide-on-other
-        foo.com,bar.com##.hide-multi
-        ##.hide-generic
-      `;
-
-      // Matching sub.example.com: matches example.com (subdomain), sub.example.com, and generic
-      const subCss = parseUbolToCss(filters, "sub.example.com", "desktop");
-      expect(subCss).toContain(".hide-on-example");
-      expect(subCss).toContain(".hide-on-sub");
-      expect(subCss).toContain(".hide-except-bad");
-      expect(subCss).toContain(".hide-generic");
-      expect(subCss).not.toContain(".hide-on-other");
-      expect(subCss).not.toContain(".hide-multi");
-
-      // Negated domain test: bad.example.com matches example.com, but is excluded by ~bad.example.com
-      const badCss = parseUbolToCss(filters, "bad.example.com", "desktop");
-      expect(badCss).not.toContain(".hide-except-bad");
-
-      // Multiple domain test: foo.com matches .hide-multi
-      const fooCss = parseUbolToCss(filters, "foo.com", "desktop");
-      expect(fooCss).toContain(".hide-multi");
-    });
-
-    it("handles platform preprocessor directives (!#if env_mobile / !#else / !#endif)", () => {
-      const filters = `
-        example.com##.desktop-always
-        !#if env_mobile
-        example.com##.mobile-only
-        !#else
-        example.com##.desktop-only
-        !#endif
-        !#if !env_mobile
-        example.com##.not-mobile
-        !#endif
-      `;
-
-      const desktopCss = parseUbolToCss(filters, "example.com", "desktop");
-      expect(desktopCss).toContain(".desktop-always");
-      expect(desktopCss).toContain(".desktop-only");
-      expect(desktopCss).toContain(".not-mobile");
-      expect(desktopCss).not.toContain(".mobile-only");
-
-      const mobileCss = parseUbolToCss(filters, "example.com", "mobile");
-      expect(mobileCss).toContain(".desktop-always");
-      expect(mobileCss).toContain(".mobile-only");
-      expect(mobileCss).not.toContain(".desktop-only");
-      expect(mobileCss).not.toContain(".not-mobile");
-    });
-
-    it("ignores comments and invalid network filter lines", () => {
-      const filters = `
-        ! This is a comment
-        # This is another comment
-        ||adserver.com^$script
-        @@||whitelist.com^
-        
-        example.com##.valid
-      `;
-      const css = parseUbolToCss(filters, "example.com", "desktop");
-      expect(css).toBe(".valid {\n  display: none !important;\n}");
-    });
-
-    it("handles unclosed or malformed style syntax gracefully without crashing", () => {
-      const filters = `
-        example.com##.broken:style(color: red
-        example.com##.valid
-      `;
-      const css = parseUbolToCss(filters, "example.com", "desktop");
-      expect(css).toContain(".valid");
-    });
-
-    it("handles empty selectors, trailing style junk, and negated-only domains", () => {
-      const filters = `
-        example.com##
-        example.com##:style(color: red;)
-        example.com##.foo:style(color: red;) trailing_junk
-        ~other.com##.only-negated-domain
-        example.com##.sub-neg-match
-        ~bad.com##.sub-neg-match
-        !#if ext_unknown
-        example.com##.unknown-feature
-        !#endif
-      `;
-      const css = parseUbolToCss(filters, "example.com", "desktop");
-      expect(css).toContain(".only-negated-domain");
-      expect(css).toContain(".sub-neg-match");
-      expect(css).not.toContain(".unknown-feature");
-      expect(css).not.toContain("trailing_junk");
-
-      // Test subdomain of negated domain
-      const badSubCss = parseUbolToCss(filters, "sub.bad.com", "desktop");
-      expect(badSubCss).not.toContain(".sub-neg-match");
-    });
-  });
 
   describe("compileCssToUbolRules", () => {
     it("compiles pure display: none CSS rules into cosmetic hide rules", () => {
@@ -387,38 +253,6 @@ describe("Converter Core", () => {
         "example.com##:matches-media((prefers-color-scheme: dark)) img:style(filter: invert(1) !important;)",
       ]);
       for (const r of rules) validateRuleWithUbo(r);
-    });
-
-    it("unwraps :matches-media rules in parseUbolToCss into native @media blocks", () => {
-      const filters = `
-        example.com##:matches-media((prefers-color-scheme: dark)) img:style(filter: invert(1) !important;)
-      `;
-      const css = parseUbolToCss(filters, "example.com", "desktop");
-      expect(css).toContain("@media (prefers-color-scheme: dark) {");
-      expect(css).toContain("filter: invert(1) !important;");
-    });
-
-    it("performs bidirectional round-trip on CSS with media-query filter rules", () => {
-      const originalCss = `
-        img {
-          filter: grayscale(1) !important;
-        }
-        @media (prefers-color-scheme: dark) {
-          img {
-            filter: invert(1) !important;
-          }
-        }
-      `;
-      const compiledRules = compileCssToUbolRules(originalCss, "example.com");
-      for (const r of compiledRules) validateRuleWithUbo(r);
-
-      const parsedCss = parseUbolToCss(
-        compiledRules.join("\n"),
-        "example.com",
-        "desktop",
-      );
-      const recompiledRules = compileCssToUbolRules(parsedCss, "example.com");
-      expect(recompiledRules).toEqual(compiledRules);
     });
   });
 });

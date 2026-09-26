@@ -2,9 +2,10 @@ import postcss from "postcss";
 import nested from "postcss-nested";
 import { AstFilterParser } from "@gorhill/ubo-core/js/static-filtering-parser.js";
 import {
-  isFilterProperty,
+  compileSelectorMapToRules,
   normalizeSelector,
   splitSelectorList,
+  type SelectorStyles,
 } from "./converter.ts";
 import {
   filterTextToUbolConfig,
@@ -27,6 +28,12 @@ export interface DualUbolConfig {
   mobile: UbolConfig;
 }
 
+export interface AllUbolConfigs {
+  desktop: UbolConfig;
+  mobile: UbolConfig;
+  complete: UbolConfig;
+}
+
 interface StylusSection {
   code?: string;
   domains?: string[];
@@ -40,17 +47,6 @@ interface StylusStyle {
   enabled?: boolean;
   sections?: StylusSection[];
 }
-
-interface SelectorStyles {
-  selector: string;
-  baseDecls: Map<string, string>;
-  lightDecls: Map<string, string>;
-  darkDecls: Map<string, string>;
-}
-
-const cleanDeclValue = (val: string): string => {
-  return val.replace(/\s*!important\s*$/i, "").trim();
-};
 
 const extractDomainsFromSection = (section: StylusSection): string[] => {
   const domains = new Set<string>();
@@ -199,153 +195,13 @@ export const parseStylusSection = (
   for (const scope of scopes) {
     const selectorMap = scopeMap.get(scope);
     if (!selectorMap) continue;
-    let needsColorScheme = false;
 
-    for (const entry of selectorMap.values()) {
-      const allProps = new Set([
-        ...entry.baseDecls.keys(),
-        ...entry.lightDecls.keys(),
-        ...entry.darkDecls.keys(),
-      ]);
-
-      if (allProps.size === 0) continue;
-
-      // Check if rule is pure cosmetic hide (only display: none)
-      const isPureHide =
-        allProps.size === 1 &&
-        allProps.has("display") &&
-        cleanDeclValue(
-          entry.baseDecls.get("display") ??
-            entry.lightDecls.get("display") ??
-            "",
-        ).toLowerCase() === "none" &&
-        (!entry.darkDecls.has("display") ||
-          cleanDeclValue(entry.darkDecls.get("display") ?? "").toLowerCase() ===
-            "none");
-
-      if (isPureHide) {
-        scopedCosmeticRules[scope].push(`${prefix}${entry.selector}`);
-        continue;
-      }
-
-      // Build style declarations
-      const baseFormattedDecls: string[] = [];
-      const baseFilterDecls: string[] = [];
-      const lightFilterDecls: string[] = [];
-      const darkFilterDecls: string[] = [];
-
-      for (const prop of allProps) {
-        const baseVal = entry.baseDecls.get(prop);
-        const lightVal = entry.lightDecls.get(prop);
-        const darkVal = entry.darkDecls.get(prop);
-
-        if (isFilterProperty(prop)) {
-          if (baseVal !== undefined) {
-            baseFilterDecls.push(
-              `${prop}: ${cleanDeclValue(baseVal)} !important;`,
-            );
-          }
-          if (
-            lightVal !== undefined &&
-            (baseVal === undefined ||
-              cleanDeclValue(baseVal) !== cleanDeclValue(lightVal))
-          ) {
-            lightFilterDecls.push(
-              `${prop}: ${cleanDeclValue(lightVal)} !important;`,
-            );
-          }
-          if (
-            darkVal !== undefined &&
-            (baseVal === undefined ||
-              cleanDeclValue(baseVal) !== cleanDeclValue(darkVal))
-          ) {
-            darkFilterDecls.push(
-              `${prop}: ${cleanDeclValue(darkVal)} !important;`,
-            );
-          }
-        } else {
-          const effectiveLight = lightVal ?? baseVal;
-
-          if (effectiveLight !== undefined && darkVal !== undefined) {
-            const cleanedLight = cleanDeclValue(effectiveLight);
-            const cleanedDark = cleanDeclValue(darkVal);
-
-            if (cleanedLight === cleanedDark) {
-              baseFormattedDecls.push(`${prop}: ${cleanedLight} !important;`);
-            } else {
-              baseFormattedDecls.push(
-                `${prop}: light-dark(${cleanedLight}, ${cleanedDark}) !important;`,
-              );
-              needsColorScheme = true;
-            }
-          } else if (effectiveLight !== undefined) {
-            const cleanedLight = cleanDeclValue(effectiveLight);
-            baseFormattedDecls.push(`${prop}: ${cleanedLight} !important;`);
-          } else if (darkVal !== undefined) {
-            const cleanedDark = cleanDeclValue(darkVal);
-            baseFormattedDecls.push(
-              `${prop}: light-dark(initial, ${cleanedDark}) !important;`,
-            );
-            needsColorScheme = true;
-          }
-        }
-      }
-
-      const subSelectors = splitSelectorList(entry.selector);
-      const unconditionalDecls = [...baseFormattedDecls, ...baseFilterDecls];
-
-      if (unconditionalDecls.length > 0) {
-        const declPayload = unconditionalDecls.join(" ");
-        for (const sub of subSelectors) {
-          scopedStyleRules[scope].push(`${prefix}${sub}:style(${declPayload})`);
-        }
-      }
-
-      if (lightFilterDecls.length > 0) {
-        const declPayload = lightFilterDecls.join(" ");
-        for (const sub of subSelectors) {
-          scopedStyleRules[scope].push(
-            `${prefix}:matches-media((prefers-color-scheme: light)) ${sub}:style(${declPayload})`,
-          );
-        }
-      }
-
-      if (darkFilterDecls.length > 0) {
-        const declPayload = darkFilterDecls.join(" ");
-        for (const sub of subSelectors) {
-          scopedStyleRules[scope].push(
-            `${prefix}:matches-media((prefers-color-scheme: dark)) ${sub}:style(${declPayload})`,
-          );
-        }
-      }
-    }
-
-    if (needsColorScheme) {
-      let hasColorSchemeSet = false;
-      const rules = scopedStyleRules[scope];
-      for (let i = 0; i < rules.length; i++) {
-        const rule = rules[i];
-        if (
-          rule &&
-          (rule.includes("##:root:style") || rule.includes("##html:style"))
-        ) {
-          if (!rule.includes("color-scheme:")) {
-            rules[i] = rule.replace(
-              /:style\(/,
-              ":style(color-scheme: light dark !important; ",
-            );
-          }
-          hasColorSchemeSet = true;
-          break;
-        }
-      }
-
-      if (!hasColorSchemeSet) {
-        rules.unshift(
-          `${prefix}:root:style(color-scheme: light dark !important;)`,
-        );
-      }
-    }
+    const { cosmeticRules, styleRules } = compileSelectorMapToRules(
+      selectorMap,
+      prefix,
+    );
+    scopedCosmeticRules[scope] = cosmeticRules;
+    scopedStyleRules[scope] = styleRules;
   }
 
   const cosmeticRules = [
@@ -418,17 +274,45 @@ const splitFilterTextToDual = (
   return { desktop: desktopLines, mobile: mobileLines };
 };
 
-export const migrateStylusJsonDual = (
+export const migrateStylusJsonAll = (
   input: unknown,
   existingConfig?:
     | {
         desktop?: Partial<UbolConfig> | Record<string, unknown>;
         mobile?: Partial<UbolConfig> | Record<string, unknown>;
+        complete?: Partial<UbolConfig> | Record<string, unknown>;
       }
     | Partial<UbolConfig>
     | Record<string, unknown>,
-): DualUbolConfig => {
+): AllUbolConfigs => {
   let parsedJson: unknown;
+
+  const existingDesktop =
+    existingConfig && "desktop" in existingConfig && existingConfig.desktop
+      ? existingConfig.desktop
+      : existingConfig &&
+          !("mobile" in existingConfig) &&
+          !("complete" in existingConfig)
+        ? existingConfig
+        : undefined;
+
+  const existingMobile =
+    existingConfig && "mobile" in existingConfig && existingConfig.mobile
+      ? existingConfig.mobile
+      : existingConfig &&
+          !("desktop" in existingConfig) &&
+          !("complete" in existingConfig)
+        ? existingConfig
+        : undefined;
+
+  const existingComplete =
+    existingConfig && "complete" in existingConfig && existingConfig.complete
+      ? existingConfig.complete
+      : existingConfig &&
+          !("desktop" in existingConfig) &&
+          !("mobile" in existingConfig)
+        ? existingConfig
+        : undefined;
 
   if (typeof input === "string") {
     try {
@@ -437,23 +321,10 @@ export const migrateStylusJsonDual = (
       if (input.includes("##")) {
         const { desktop: dLines, mobile: mLines } =
           splitFilterTextToDual(input);
-        const existingDesktop =
-          existingConfig &&
-          "desktop" in existingConfig &&
-          existingConfig.desktop
-            ? existingConfig.desktop
-            : existingConfig && !("mobile" in existingConfig)
-              ? existingConfig
-              : undefined;
-        const existingMobile =
-          existingConfig && "mobile" in existingConfig && existingConfig.mobile
-            ? existingConfig.mobile
-            : existingConfig && !("desktop" in existingConfig)
-              ? existingConfig
-              : undefined;
         return {
           desktop: filterTextToUbolConfig(dLines.join("\n"), existingDesktop),
           mobile: filterTextToUbolConfig(mLines.join("\n"), existingMobile),
+          complete: filterTextToUbolConfig(input, existingComplete),
         };
       }
       throw new Error(
@@ -464,20 +335,6 @@ export const migrateStylusJsonDual = (
   } else {
     parsedJson = input;
   }
-
-  const existingDesktop =
-    existingConfig && "desktop" in existingConfig && existingConfig.desktop
-      ? existingConfig.desktop
-      : existingConfig && !("mobile" in existingConfig)
-        ? existingConfig
-        : undefined;
-
-  const existingMobile =
-    existingConfig && "mobile" in existingConfig && existingConfig.mobile
-      ? existingConfig.mobile
-      : existingConfig && !("desktop" in existingConfig)
-        ? existingConfig
-        : undefined;
 
   if (
     parsedJson !== null &&
@@ -496,6 +353,7 @@ export const migrateStylusJsonDual = (
     return {
       desktop: filterTextToUbolConfig(dLines.join("\n"), existingDesktop),
       mobile: filterTextToUbolConfig(mLines.join("\n"), existingMobile),
+      complete: filterTextToUbolConfig(rawFilters, existingComplete),
     };
   }
 
@@ -511,6 +369,10 @@ export const migrateStylusJsonDual = (
       mobile: filterTextToUbolConfig(
         mLines.join("\n"),
         existingMobile ?? parsedJson,
+      ),
+      complete: filterTextToUbolConfig(
+        rawFilters,
+        existingComplete ?? parsedJson,
       ),
     };
   }
@@ -535,7 +397,18 @@ export const migrateStylusJsonDual = (
 
   const desktopRules: string[] = [];
   const mobileRules: string[] = [];
+  const completeRules: string[] = [];
   const uboParser = new AstFilterParser();
+  const validatedRules = new Set<string>();
+
+  const validateRule = (rule: string): void => {
+    if (validatedRules.has(rule)) return;
+    uboParser.parse(rule);
+    if (uboParser.hasError() || !uboParser.isCosmeticFilter()) {
+      throw new Error(`Generated uBO rule failed syntax validation: ${rule}`);
+    }
+    validatedRules.add(rule);
+  };
 
   for (const style of styles) {
     if (style.enabled === false) continue;
@@ -576,23 +449,22 @@ export const migrateStylusJsonDual = (
       ];
 
       for (const rule of [...globalRules, ...desktopOnlyRules]) {
-        uboParser.parse(rule);
-        if (uboParser.hasError() || !uboParser.isCosmeticFilter()) {
-          throw new Error(
-            `Generated uBO desktop rule failed syntax validation: ${rule}`,
-          );
-        }
+        validateRule(rule);
         desktopRules.push(rule);
       }
 
       for (const rule of [...globalRules, ...mobileOnlyRules]) {
-        uboParser.parse(rule);
-        if (uboParser.hasError() || !uboParser.isCosmeticFilter()) {
-          throw new Error(
-            `Generated uBO mobile rule failed syntax validation: ${rule}`,
-          );
-        }
+        validateRule(rule);
         mobileRules.push(rule);
+      }
+
+      for (const rule of [
+        ...globalRules,
+        ...desktopOnlyRules,
+        ...mobileOnlyRules,
+      ]) {
+        validateRule(rule);
+        completeRules.push(rule);
       }
     }
   }
@@ -600,6 +472,27 @@ export const migrateStylusJsonDual = (
   return {
     desktop: filterTextToUbolConfig(desktopRules.join("\n"), existingDesktop),
     mobile: filterTextToUbolConfig(mobileRules.join("\n"), existingMobile),
+    complete: filterTextToUbolConfig(
+      completeRules.join("\n"),
+      existingComplete,
+    ),
+  };
+};
+
+export const migrateStylusJsonDual = (
+  input: unknown,
+  existingConfig?:
+    | {
+        desktop?: Partial<UbolConfig> | Record<string, unknown>;
+        mobile?: Partial<UbolConfig> | Record<string, unknown>;
+      }
+    | Partial<UbolConfig>
+    | Record<string, unknown>,
+): DualUbolConfig => {
+  const result = migrateStylusJsonAll(input, existingConfig);
+  return {
+    desktop: result.desktop,
+    mobile: result.mobile,
   };
 };
 
@@ -608,102 +501,12 @@ export const migrateStylusJson = (
   existingConfig?: Partial<UbolConfig> | Record<string, unknown>,
   options?: { target?: "all" | "desktop" | "mobile" },
 ): UbolConfig => {
+  const result = migrateStylusJsonAll(input, existingConfig);
   if (options?.target === "desktop") {
-    return migrateStylusJsonDual(input, existingConfig).desktop;
+    return result.desktop;
   }
   if (options?.target === "mobile") {
-    return migrateStylusJsonDual(input, existingConfig).mobile;
+    return result.mobile;
   }
-  let parsedJson: unknown;
-
-  if (typeof input === "string") {
-    try {
-      parsedJson = JSON.parse(input);
-    } catch (err) {
-      if (input.includes("##")) {
-        return filterTextToUbolConfig(input, existingConfig);
-      }
-      throw new Error(
-        `Failed to parse Stylus JSON: ${err instanceof Error ? err.message : String(err)}`,
-        { cause: err },
-      );
-    }
-  } else {
-    parsedJson = input;
-  }
-
-  // Handle case where input is already a legacy uBO backup (e.g. ubol-config-1.json)
-  if (
-    parsedJson !== null &&
-    typeof parsedJson === "object" &&
-    "userResources" in parsedJson
-  ) {
-    const userResources = parsedJson.userResources;
-    if (
-      userResources !== null &&
-      typeof userResources === "object" &&
-      "userFilters" in userResources
-    ) {
-      const rawUserFilters = userResources.userFilters;
-      const rawFilters =
-        typeof rawUserFilters === "string" ? rawUserFilters : "";
-      return filterTextToUbolConfig(rawFilters, existingConfig);
-    }
-  }
-
-  // Handle case where input is already a native uBOL config
-  if (isUbolConfig(parsedJson)) {
-    return filterTextToUbolConfig(
-      ubolConfigToFilterText(parsedJson),
-      existingConfig ?? parsedJson,
-    );
-  }
-
-  const styles: StylusStyle[] = [];
-
-  if (Array.isArray(parsedJson)) {
-    styles.push(...(parsedJson as StylusStyle[]));
-  } else if (parsedJson && typeof parsedJson === "object") {
-    if (
-      "sections" in parsedJson &&
-      Array.isArray((parsedJson as StylusStyle).sections)
-    ) {
-      styles.push(parsedJson as StylusStyle);
-    } else if (
-      "styles" in parsedJson &&
-      Array.isArray((parsedJson as { styles: StylusStyle[] }).styles)
-    ) {
-      styles.push(...(parsedJson as { styles: StylusStyle[] }).styles);
-    }
-  }
-
-  const allRules: string[] = [];
-  const uboParser = new AstFilterParser();
-
-  for (const style of styles) {
-    if (style.enabled === false) continue;
-    if (!style.sections) continue;
-
-    for (const section of style.sections) {
-      if (!section.code || section.code.trim().length === 0) continue;
-
-      const domains = extractDomainsFromSection(section);
-      const { cosmeticRules, styleRules } = parseStylusSection(
-        section.code,
-        domains,
-      );
-
-      for (const rule of [...cosmeticRules, ...styleRules]) {
-        uboParser.parse(rule);
-        if (uboParser.hasError() || !uboParser.isCosmeticFilter()) {
-          throw new Error(
-            `Generated uBO rule failed syntax validation: ${rule}`,
-          );
-        }
-        allRules.push(rule);
-      }
-    }
-  }
-
-  return filterTextToUbolConfig(allRules.join("\n"), existingConfig);
+  return result.complete;
 };
