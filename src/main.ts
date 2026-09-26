@@ -1,135 +1,131 @@
 import {
-  filterTextToUbolConfig,
   getFiltersFromBackup,
-  isUbolConfig,
   UbolBackupSchema,
   type UbolBackup,
 } from "./core/schema.ts";
-import { migrateStylusJson } from "./core/stylus-migrator.ts";
-import {
-  extractDomainsFromFilters,
-  UbolWorkbenchClient,
-} from "./userscript/workbench.ts";
+import { extractDomainsFromFilters } from "./userscript/workbench.ts";
 import { generateUserscriptBundle } from "./userscript/generator.ts";
 
-// Sample uBOL data for testing and demonstration
-const SAMPLE_UBOL: UbolBackup = {
-  userResources: {
-    userFilters: [
-      "! Sample uBOL workbench filters",
-      "localhost##.ad-banner",
-      "localhost###sample-sidebar",
-      "localhost##.content-box:style(background: light-dark(#f8f9fa, #1f2937) !important; color: light-dark(#111827, #f9fafb) !important; border-radius: 8px !important;)",
-      "localhost##.sample-btn:style(background-color: light-dark(#2563eb, #3b82f6) !important;)",
-      "github.com##.feed-left",
-      "github.com,gist.github.com##body:style(color: light-dark(#24292f, #c9d1d9) !important;)",
-    ].join("\n"),
-  },
-  schemaVersion: 1,
-};
-
-let currentBackup: UbolBackup | null = null;
-let currentUserscriptCode = "";
 let currentBlobUrl = "";
-let workbenchClient: UbolWorkbenchClient | null = null;
+let lastDebugInfo = "";
 
-const statDomainsEl = document.getElementById("stat-domains");
-const statHideEl = document.getElementById("stat-hide");
-const statStyleEl = document.getElementById("stat-style");
-const domainTagsEl = document.getElementById("domain-tags");
-const installLink = document.getElementById(
-  "btn-install-userscript",
-) as HTMLAnchorElement | null;
-const previewCodeEl = document.getElementById("userscript-preview");
-
-const updateHubView = (backup: UbolBackup): void => {
-  currentBackup = backup;
+export const parseAndApplyUbolBackup = (
+  rawText: string,
+): { backup: UbolBackup; domains: string[]; userscript: string } => {
+  const json: unknown = JSON.parse(rawText);
+  const backup = UbolBackupSchema.parse(json);
   const filters = getFiltersFromBackup(backup);
-
   const domains = extractDomainsFromFilters(filters);
-  const lines = filters.split("\n").map((l) => l.trim());
+  const userscript = generateUserscriptBundle(backup);
 
-  let hideCount = 0;
-  let styleCount = 0;
-
-  for (const line of lines) {
-    if (line.includes("##")) {
-      if (line.includes(":style(")) {
-        styleCount++;
-      } else {
-        hideCount++;
-      }
-    }
-  }
-
-  if (statDomainsEl) statDomainsEl.textContent = String(domains.length);
-  if (statHideEl) statHideEl.textContent = String(hideCount);
-  if (statStyleEl) statStyleEl.textContent = String(styleCount);
-
-  if (domainTagsEl) {
-    if (domains.length === 0) {
-      domainTagsEl.innerHTML =
-        '<span class="tag-empty">No domains parsed</span>';
-    } else {
-      domainTagsEl.innerHTML = domains
-        .map((d) => `<span class="domain-tag">${d}</span>`)
-        .join("");
-    }
-  }
-
-  // Generate userscript
-  currentUserscriptCode = generateUserscriptBundle(backup);
-  if (previewCodeEl) {
-    previewCodeEl.textContent = currentUserscriptCode;
-  }
-
-  if (currentBlobUrl.length > 0) {
-    URL.revokeObjectURL(currentBlobUrl);
-  }
-  const blob = new Blob([currentUserscriptCode], {
-    type: "application/javascript;charset=utf-8",
-  });
-  currentBlobUrl = URL.createObjectURL(blob);
-
-  if (installLink) {
-    installLink.href = currentBlobUrl;
-  }
-
-  // Update in-page workbench
-  if (workbenchClient) {
-    workbenchClient.loadFilters(filters);
-  }
+  return { backup, domains, userscript };
 };
 
-const setupEventListeners = (): void => {
-  // Tabs
-  const tabTriggers =
-    document.querySelectorAll<HTMLButtonElement>(".tab-trigger");
-  const tabPanels = document.querySelectorAll<HTMLDivElement>(".tab-panel");
-
-  tabTriggers.forEach((trigger) => {
-    trigger.addEventListener("click", () => {
-      const target = trigger.getAttribute("data-tab");
-      tabTriggers.forEach((t) => t.classList.toggle("active", t === trigger));
-      tabPanels.forEach((p) =>
-        p.classList.toggle("active", p.id === `panel-${target ?? ""}`),
-      );
-    });
-  });
-
-  // Dropzone & File Input
+const setupHubApp = (): void => {
   const dropzone = document.getElementById("ubol-dropzone");
   const fileInput = document.getElementById(
     "ubol-file-input",
   ) as HTMLInputElement | null;
-  const ubolTextarea = document.getElementById(
-    "ubol-input",
-  ) as HTMLTextAreaElement | null;
+  const importBtn = document.getElementById("btn-import-ubol");
+  const installLink = document.getElementById(
+    "btn-install-userscript",
+  ) as HTMLAnchorElement | null;
+  const statusInfo = document.getElementById("status-info");
+  const errorPanel = document.getElementById("error-panel");
+  const errorMessage = document.getElementById("error-message");
+  const copyDebugBtn = document.getElementById("btn-copy-debug");
+
+  const showError = (err: unknown, file: File, rawText: string): void => {
+    if (installLink) {
+      installLink.removeAttribute("href");
+      installLink.classList.add("disabled");
+      installLink.setAttribute("aria-disabled", "true");
+    }
+
+    if (statusInfo) {
+      statusInfo.hidden = true;
+    }
+
+    const message = err instanceof Error ? err.message : String(err);
+    if (errorMessage) {
+      errorMessage.textContent = message;
+    }
+    if (errorPanel) {
+      errorPanel.hidden = false;
+    }
+
+    lastDebugInfo = [
+      "=== uBOL Workbench Debug Info ===",
+      `Timestamp: ${new Date().toISOString()}`,
+      `File: ${file.name}`,
+      `Error: ${message}`,
+      err instanceof Error && err.stack ? `Stack:\n${err.stack}` : "",
+      "Raw Input Snippet (first 500 chars):",
+      rawText.slice(0, 500),
+      "=================================",
+    ]
+      .filter(Boolean)
+      .join("\n");
+  };
+
+  const processFile = (file: File): void => {
+    void file
+      .text()
+      .then((text) => {
+        try {
+          const { domains, userscript } = parseAndApplyUbolBackup(text);
+
+          if (currentBlobUrl.length > 0) {
+            URL.revokeObjectURL(currentBlobUrl);
+          }
+
+          const blob = new Blob([userscript], {
+            type: "application/javascript;charset=utf-8",
+          });
+          currentBlobUrl = URL.createObjectURL(blob);
+
+          if (installLink) {
+            installLink.href = currentBlobUrl;
+            installLink.classList.remove("disabled");
+            installLink.removeAttribute("aria-disabled");
+          }
+
+          if (statusInfo) {
+            statusInfo.textContent = `Imported "${file.name}": parsed ${String(domains.length)} domain(s). Userscript is ready.`;
+            statusInfo.hidden = false;
+          }
+
+          if (errorPanel) {
+            errorPanel.hidden = true;
+          }
+          lastDebugInfo = "";
+        } catch (err) {
+          showError(err, file, text);
+        }
+      })
+      .catch((readErr: unknown) => {
+        showError(readErr, file, "");
+      });
+  };
+
+  // Click & keyboard triggers for file selection
+  importBtn?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    fileInput?.click();
+  });
 
   dropzone?.addEventListener("click", () => {
     fileInput?.click();
   });
 
+  dropzone?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      fileInput?.click();
+    }
+  });
+
+  // Drag-and-drop
   dropzone?.addEventListener("dragover", (e) => {
     e.preventDefault();
     dropzone.classList.add("dragover");
@@ -139,153 +135,38 @@ const setupEventListeners = (): void => {
     dropzone.classList.remove("dragover");
   });
 
-  const parseUbolInput = (text: string): UbolBackup => {
-    const json: unknown = JSON.parse(text);
-    if (
-      Array.isArray(json) &&
-      json.some(
-        (item) =>
-          typeof item === "object" &&
-          item !== null &&
-          ("sections" in item || "settings" in item),
-      )
-    ) {
-      return migrateStylusJson(json);
-    }
-    return UbolBackupSchema.parse(json);
-  };
-
   dropzone?.addEventListener("drop", (e) => {
     e.preventDefault();
     dropzone.classList.remove("dragover");
     const file = e.dataTransfer?.files[0];
     if (file) {
-      void file.text().then((text) => {
-        if (ubolTextarea) ubolTextarea.value = text;
-        try {
-          const parsed = parseUbolInput(text);
-          updateHubView(parsed);
-        } catch (err) {
-          alert(
-            `Parse failed: ${err instanceof Error ? err.message : String(err)}`,
-          );
-        }
-      });
+      processFile(file);
     }
   });
 
+  // File input change
   fileInput?.addEventListener("change", () => {
     const file = fileInput.files?.[0];
     if (file) {
-      void file.text().then((text) => {
-        if (ubolTextarea) ubolTextarea.value = text;
-        try {
-          const parsed = parseUbolInput(text);
-          updateHubView(parsed);
-        } catch (err) {
-          alert(
-            `Parse failed: ${err instanceof Error ? err.message : String(err)}`,
-          );
-        }
-      });
+      processFile(file);
     }
   });
 
-  // Parse button
-  const parseBtn = document.getElementById("btn-parse-ubol");
-  parseBtn?.addEventListener("click", () => {
-    if (!ubolTextarea?.value.trim()) return;
-    try {
-      const parsed = parseUbolInput(ubolTextarea.value);
-      updateHubView(parsed);
-    } catch (err) {
-      alert(
-        `Parse failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-  });
-
-  // Load sample
-  const sampleBtn = document.getElementById("btn-load-sample");
-  sampleBtn?.addEventListener("click", () => {
-    if (ubolTextarea) {
-      ubolTextarea.value = JSON.stringify(SAMPLE_UBOL, null, 2);
-    }
-    updateHubView(SAMPLE_UBOL);
-  });
-
-  // Stylus Migration
-  const migrateBtn = document.getElementById("btn-migrate-stylus");
-  const stylusTextarea = document.getElementById(
-    "stylus-input",
-  ) as HTMLTextAreaElement | null;
-
-  migrateBtn?.addEventListener("click", () => {
-    if (!stylusTextarea?.value.trim()) return;
-    try {
-      const ubolBackup = migrateStylusJson(stylusTextarea.value);
-      if (ubolTextarea) {
-        ubolTextarea.value = JSON.stringify(ubolBackup, null, 2);
-      }
-      updateHubView(ubolBackup);
-      alert(
-        "Stylus migration complete. uBOL backup JSON and Userscript generated.",
-      );
-    } catch (err) {
-      alert(
-        `Migration failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-  });
-
-  // Copy Userscript
-  const copyBtn = document.getElementById("btn-copy-userscript");
-  copyBtn?.addEventListener("click", () => {
-    if (currentUserscriptCode) {
-      void navigator.clipboard.writeText(currentUserscriptCode).then(() => {
-        const orig = copyBtn.textContent;
-        copyBtn.textContent = "Copied";
-        setTimeout(() => {
-          copyBtn.textContent = orig;
-        }, 2000);
-      });
-    }
-  });
-
-  // Download uBOL JSON
-  const downloadUbolBtn = document.getElementById("btn-download-ubol");
-  downloadUbolBtn?.addEventListener("click", () => {
-    if (!currentBackup) return;
-    const configToExport = isUbolConfig(currentBackup)
-      ? currentBackup
-      : filterTextToUbolConfig(getFiltersFromBackup(currentBackup));
-    const blob = new Blob([JSON.stringify(configToExport, null, 2)], {
-      type: "application/json",
+  // Copy debug info
+  copyDebugBtn?.addEventListener("click", () => {
+    if (!lastDebugInfo) return;
+    void navigator.clipboard.writeText(lastDebugInfo).then(() => {
+      const origText = copyDebugBtn.textContent;
+      copyDebugBtn.textContent = "Copied Debug Info!";
+      setTimeout(() => {
+        copyDebugBtn.textContent = origText;
+      }, 2000);
     });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "ubol-backup.json";
-    a.click();
-    URL.revokeObjectURL(url);
   });
-};
-
-// Initialize In-Page Workbench
-const initApp = (): void => {
-  setupEventListeners();
-
-  workbenchClient = new UbolWorkbenchClient({
-    domain: window.location.hostname,
-  });
-  workbenchClient.mount(document.body);
-
-  // Load sample initially so user sees full functionality immediately
-  updateHubView(SAMPLE_UBOL);
 };
 
 if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", initApp);
+  document.addEventListener("DOMContentLoaded", setupHubApp);
 } else {
-  initApp();
+  setupHubApp();
 }

@@ -3,8 +3,9 @@ import {
   diagnoseDeadCode,
   extractDomainsFromFilters,
   generateUserscriptHeader,
+  UbolWorkbenchClient,
 } from "../src/userscript/workbench.ts";
-import type { UbolBackup } from "../src/core/schema.ts";
+import { getFiltersFromBackup, type UbolBackup } from "../src/core/schema.ts";
 
 describe("Workbench Controller", () => {
   it("diagnoses dead code against document selectors", () => {
@@ -93,5 +94,18 @@ describe("Workbench Controller", () => {
     expect(userJs).toContain("// ==/UserScript==");
     expect(userJs).toContain("github.com##.feed-left");
     expect(userJs).toContain("customElements.define");
+  });
+
+  it("initializes UbolWorkbenchClient and parses filters correctly", () => {
+    const client = new UbolWorkbenchClient({
+      domain: "example.com",
+      initialFilters:
+        "example.com##.ad\nexample.com##.header:style(color: blue !important;)",
+    });
+    expect(client.domain).toBe("example.com");
+    expect(client.hideText).toBe(".ad");
+    expect(client.styleText).toContain(".header");
+    const exported = client.exportBackup();
+    expect(getFiltersFromBackup(exported)).toContain("example.com##.ad");
   });
 });

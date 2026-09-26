@@ -7,12 +7,15 @@ A serverless, pure frontend custom style management and debugging workbench usin
 ## Core Deliverables
 
 1. **Static Hub (`index.html`)**
-   - Parses uBOL backup JSON files directly in the browser conforming to `UbolBackupSchema`.
-   - Analyzes filter rules to extract target domains and dynamically generate Userscript installation links with exact `@match` directives.
-   - Includes a Stylus migration engine that converts Stylus export JSON into modern uBOL rules using PostCSS AST.
-   - Provides an integrated testbed sandbox for live preview and rule debugging.
+   - Minimalist centered card interface for importing uBOL backup JSON files directly in the browser conforming to `UbolBackupSchema`.
+   - Analyzes filter rules to extract target domains and dynamically provides a one-click Userscript installation link via `blob:` URL with exact `@match` directives.
+   - Built-in error alert area with detailed debug info copying for agent troubleshooting when invalid configurations are imported.
 
-2. **In-Page Userscript Client (`.user.js` / Web Component)**
+2. **Stylus Migration CLI (`npm run migrate:stylus --`)**
+   - Standalone command-line migration utility converting Stylus export JSON into modern uBOL rules using PostCSS AST.
+   - Merges `@media (prefers-color-scheme: dark)` into modern CSS `light-dark()` with `color-scheme: light dark !important;`.
+
+3. **In-Page Userscript Client (`.user.js` / Web Component)**
    - Built with pure native Web Components (`customElements.define('ubol-workbench', ...)`), reactive state management, and open Shadow DOM with zero runtime UI framework dependencies.
    - Three integrated panels:
      - **Hide Selectors**: Real-time cosmetic hide rule editing.
@@ -65,6 +68,8 @@ export type UbolBackup = z.infer<typeof UbolBackupSchema>;
 │   └── node-canary.yml        # Node.js canary testing workflow
 ├── public/                    # Static assets
 ├── src/
+│   ├── cli/
+│   │   └── migrate-stylus.ts  # CLI tool for Stylus migration
 │   ├── core/
 │   │   ├── converter.ts       # AST-based bidirectional parser & compiler
 │   │   ├── schema.ts          # Zod validation schema
@@ -77,8 +82,8 @@ export type UbolBackup = z.infer<typeof UbolBackupSchema>;
 │   │   ├── generator.ts       # Standalone .user.js compiler with @match headers
 │   │   ├── shadow-modal.ts    # Shadow DOM templates and styles
 │   │   └── workbench.ts       # <ubol-workbench> Web Component controller
-│   ├── main.ts                # Static Hub application logic
-│   └── style.css              # Static Hub styling
+│   ├── main.ts                # Minimalist Hub application logic
+│   └── style.css              # Minimalist Hub styling
 ├── tests/
 │   ├── converter.test.ts      # Parser and compiler unit tests
 │   ├── stylus-migrator.test.ts# Stylus migration unit tests

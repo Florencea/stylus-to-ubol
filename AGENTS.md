@@ -11,7 +11,8 @@ Guidelines for AI agents and human contributors working on this repository.
   - All declarations must enforce `!important`.
 - **Zero UI Framework Dependencies**: The Userscript in-page modal must use pure native Web Components (`customElements.define`) and open Shadow DOM. Do not add React, Vue, or other runtime frameworks.
 - **Language & Style Constraints**:
-  - Project source code, comments, UI text, and documentation must use concise English.
+  - Agent responses to the user in chat must use Traditional Chinese (繁體中文).
+  - All other project artifacts—including source code, comments, UI text, documentation, commit messages, and tests—must use concise English.
   - Do not use unnecessary emojis across the codebase or UI.
 - **Deployment Target**:
   - GitHub Pages via automated workflow (`.github/workflows/deploy.yml`).
@@ -58,6 +59,7 @@ All checks must pass with zero errors and zero warnings.
 - `src/core/schema.ts`: Zod schema definition for uBOL backup JSON (`UbolBackupSchema`).
 - `src/core/converter.ts`: AST-based bidirectional parser (`parseUbolToCss`, `compileCssToUbolRules`).
 - `src/core/stylus-migrator.ts`: PostCSS AST converter for Stylus JSON export to uBOL backup format.
+- `src/cli/migrate-stylus.ts`: Standalone CLI tool for migrating Stylus JSON exports to uBOL backup format (`npm run migrate:stylus --`).
 - `src/userscript/workbench.ts`: `<ubol-workbench>` Web Component controller, reactive state, and DOM observer.
 - `src/userscript/shadow-modal.ts`: Shadow DOM UI templates, styles, and tab switching.
 - `src/userscript/generator.ts`: Userscript compiler generating standalone `.user.js` files with exact `@match` headers.

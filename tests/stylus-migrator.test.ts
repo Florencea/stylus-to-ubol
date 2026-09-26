@@ -348,4 +348,39 @@ describe("Stylus Migrator", () => {
     });
     expect(roundTripped.customFilters).toEqual(nativeConfig.customFilters);
   });
+
+  it("runs CLI migrate-stylus correctly to file output", async () => {
+    const fs = await import("node:fs");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const { runMigrateStylusCli } =
+      await import("../src/cli/migrate-stylus.ts");
+
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "stylus-cli-test-"));
+    const inputFile = path.join(tmpDir, "input.json");
+    const outputFile = path.join(tmpDir, "output.json");
+
+    const stylusData = [
+      {
+        enabled: true,
+        sections: [
+          {
+            code: ".banner { display: none !important; }",
+            domains: ["cli-test.com"],
+          },
+        ],
+      },
+    ];
+
+    fs.writeFileSync(inputFile, JSON.stringify(stylusData), "utf-8");
+    runMigrateStylusCli([inputFile, outputFile]);
+
+    const outputContent = fs.readFileSync(outputFile, "utf-8");
+    const parsed = JSON.parse(outputContent) as {
+      userResources: { userFilters: string };
+    };
+    expect(parsed.userResources.userFilters).toContain("cli-test.com##.banner");
+
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
 });

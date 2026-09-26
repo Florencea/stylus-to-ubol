@@ -9,9 +9,8 @@
   </head>
   <body>
     <div id="app">
-      <!-- Header -->
-      <header class="hub-header">
-        <div class="brand">
+      <main class="card hub-card">
+        <header class="hub-header">
           <div class="logo-box">uBOL</div>
           <div>
             <h1>uBOL Workbench</h1>
@@ -19,145 +18,59 @@
               uBlock Origin Lite Single Source of Truth (SSOT) Style Workbench
             </p>
           </div>
-        </div>
-        <div class="header-badges">
-          <span class="status-pill">Serverless</span>
-          <span class="status-pill">Exact @match</span>
-        </div>
-      </header>
+        </header>
 
-      <!-- Main Layout -->
-      <main class="hub-layout">
-        <!-- Left: Importer & Compiler -->
-        <section class="card import-card">
-          <h2>Import & Compile</h2>
-          <div class="tabs">
-            <button class="tab-trigger active" id="tab-ubol" data-tab="ubol">
-              uBOL Backup JSON
-            </button>
-            <button class="tab-trigger" id="tab-stylus" data-tab="stylus">
-              Stylus Migrator
-            </button>
-          </div>
-
-          <div class="tab-panel active" id="panel-ubol">
-            <div class="dropzone" id="ubol-dropzone">
-              <span class="drop-text"
-                >Drop uBOL backup .json file here, or click to browse</span
-              >
-              <input
-                type="file"
-                id="ubol-file-input"
-                accept=".json"
-                style="display: none"
-              />
-            </div>
-            <textarea
-              id="ubol-input"
-              placeholder='Paste uBOL backup JSON (e.g. {"customFilters": [...]} or {"userResources": {"userFilters": "..."}})'
-            ></textarea>
-            <div class="button-row">
-              <button class="btn btn-primary" id="btn-parse-ubol">
-                Parse Backup
-              </button>
-              <button class="btn btn-secondary" id="btn-load-sample">
-                Load Sample
-              </button>
-            </div>
-          </div>
-
-          <div class="tab-panel" id="panel-stylus">
-            <p class="tab-desc">
-              Parses Stylus JSON with PostCSS AST, merges
-              <code>@media (prefers-color-scheme)</code> into native
-              <code>light-dark()</code>, and enforces <code>!important</code>.
-            </p>
-            <textarea
-              id="stylus-input"
-              placeholder="Paste Stylus export JSON here..."
-            ></textarea>
-            <div class="button-row">
-              <button class="btn btn-primary" id="btn-migrate-stylus">
-                Migrate to uBOL JSON
-              </button>
-            </div>
-          </div>
-        </section>
-
-        <!-- Right: Deliverables & Userscript -->
-        <section class="card output-card">
-          <h2>Deliverables & Userscript</h2>
-
-          <div class="stats-grid">
-            <div class="stat-box">
-              <span class="stat-label">Target Domains</span>
-              <span class="stat-value" id="stat-domains">0</span>
-            </div>
-            <div class="stat-box">
-              <span class="stat-label">Cosmetic Hide Rules</span>
-              <span class="stat-value" id="stat-hide">0</span>
-            </div>
-            <div class="stat-box">
-              <span class="stat-label">Style Rules</span>
-              <span class="stat-value" id="stat-style">0</span>
-            </div>
-          </div>
-
-          <div class="matched-domains-wrapper">
-            <label>Exact <code>@match</code> Domains:</label>
-            <div class="domain-tags" id="domain-tags">
-              <span class="tag-empty">No domains parsed</span>
-            </div>
-          </div>
-
-          <div class="button-row">
-            <a
-              class="btn btn-success btn-lg"
-              id="btn-install-userscript"
-              download="ubol-workbench.user.js"
-              href="#"
+        <section class="action-section">
+          <!-- (1) File Import -->
+          <div
+            class="dropzone"
+            id="ubol-dropzone"
+            tabindex="0"
+            role="button"
+            aria-label="Import uBOL Configuration"
+          >
+            <input
+              type="file"
+              id="ubol-file-input"
+              accept=".json,application/json"
+              style="display: none"
+            />
+            <button
+              type="button"
+              class="btn btn-secondary"
+              id="btn-import-ubol"
             >
-              Install / Download Userscript (.user.js)
-            </a>
-            <button class="btn btn-secondary" id="btn-copy-userscript">
-              Copy Script
+              Import uBOL Configuration
             </button>
-            <button class="btn btn-secondary" id="btn-download-ubol">
-              Export uBOL JSON
-            </button>
+            <span class="drop-hint">or drop .json backup file here</span>
           </div>
 
-          <div class="code-preview-wrapper">
-            <label>Userscript Preview:</label>
-            <pre><code id="userscript-preview">// Awaiting uBOL backup load or parse...</code></pre>
+          <!-- (2) Script Install Button -->
+          <a
+            class="btn btn-install disabled"
+            id="btn-install-userscript"
+            download="ubol-workbench.user.js"
+            role="button"
+            aria-disabled="true"
+          >
+            Install Userscript
+          </a>
+
+          <!-- Status Info -->
+          <div class="status-info" id="status-info" hidden></div>
+
+          <!-- (3) Error Alert Area -->
+          <div class="error-panel" id="error-panel" hidden>
+            <div class="error-header">
+              <span class="error-title">Invalid Configuration</span>
+            </div>
+            <pre class="error-message" id="error-message"></pre>
+            <button class="btn btn-secondary" id="btn-copy-debug" type="button">
+              Copy Debug Info for Agent
+            </button>
           </div>
         </section>
       </main>
-
-      <!-- Bottom: In-Page Live Testbed -->
-      <section class="card playground-card">
-        <div class="playground-header">
-          <h2>Live Testbed & Diagnostics Sandbox</h2>
-          <span class="hint"
-            >Floating <strong>uBOL</strong> workbench in the bottom right is
-            linked to this sandbox.</span
-          >
-        </div>
-
-        <div class="playground-sandbox">
-          <div class="sample-element ad-banner" id="sample-ad">
-            <span>[Ad Banner] .ad-banner (cosmetic hide test)</span>
-          </div>
-          <div class="sample-element sidebar" id="sample-sidebar">
-            <span>[Sidebar] #sample-sidebar</span>
-          </div>
-          <div class="sample-element content-box" id="sample-content">
-            <h3>.content-box Main Content</h3>
-            <p>Tests style injection and <code>light-dark()</code> theming.</p>
-            <button class="sample-btn" id="sample-button">Sample Button</button>
-          </div>
-        </div>
-      </section>
     </div>
 
     <script type="module" src="/src/main.ts"></script>
