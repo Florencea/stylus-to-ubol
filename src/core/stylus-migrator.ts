@@ -2,7 +2,12 @@ import postcss from "postcss";
 import nested from "postcss-nested";
 import { AstFilterParser } from "@gorhill/ubo-core/js/static-filtering-parser.js";
 import { normalizeSelector, splitSelectorList } from "./converter.ts";
-import { UbolLegacyBackupSchema, type UbolLegacyBackup } from "./schema.ts";
+import {
+  filterTextToUbolConfig,
+  isUbolConfig,
+  ubolConfigToFilterText,
+  type UbolConfig,
+} from "./schema.ts";
 
 export interface StylusSectionResult {
   cosmeticRules: string[];
@@ -241,13 +246,19 @@ export const parseStylusSection = (
   };
 };
 
-export const migrateStylusJson = (input: unknown): UbolLegacyBackup => {
+export const migrateStylusJson = (
+  input: unknown,
+  existingConfig?: Partial<UbolConfig> | Record<string, unknown>,
+): UbolConfig => {
   let parsedJson: unknown;
 
   if (typeof input === "string") {
     try {
       parsedJson = JSON.parse(input);
     } catch (err) {
+      if (input.includes("##")) {
+        return filterTextToUbolConfig(input, existingConfig);
+      }
       throw new Error(
         `Failed to parse Stylus JSON: ${err instanceof Error ? err.message : String(err)}`,
         { cause: err },
@@ -255,6 +266,33 @@ export const migrateStylusJson = (input: unknown): UbolLegacyBackup => {
     }
   } else {
     parsedJson = input;
+  }
+
+  // Handle case where input is already a legacy uBO backup (e.g. ubol-config-1.json)
+  if (
+    parsedJson !== null &&
+    typeof parsedJson === "object" &&
+    "userResources" in parsedJson
+  ) {
+    const userResources = parsedJson.userResources;
+    if (
+      userResources !== null &&
+      typeof userResources === "object" &&
+      "userFilters" in userResources
+    ) {
+      const rawUserFilters = userResources.userFilters;
+      const rawFilters =
+        typeof rawUserFilters === "string" ? rawUserFilters : "";
+      return filterTextToUbolConfig(rawFilters, existingConfig);
+    }
+  }
+
+  // Handle case where input is already a native uBOL config
+  if (isUbolConfig(parsedJson)) {
+    return filterTextToUbolConfig(
+      ubolConfigToFilterText(parsedJson),
+      existingConfig ?? parsedJson,
+    );
   }
 
   const styles: StylusStyle[] = [];
@@ -303,12 +341,5 @@ export const migrateStylusJson = (input: unknown): UbolLegacyBackup => {
     }
   }
 
-  const backup: UbolLegacyBackup = {
-    userResources: {
-      userFilters: allRules.join("\n"),
-    },
-    schemaVersion: 1,
-  };
-
-  return UbolLegacyBackupSchema.parse(backup);
+  return filterTextToUbolConfig(allRules.join("\n"), existingConfig);
 };

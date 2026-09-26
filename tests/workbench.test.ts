@@ -108,4 +108,45 @@ describe("Workbench Controller", () => {
     const exported = client.exportBackup();
     expect(getFiltersFromBackup(exported)).toContain("example.com##.ad");
   });
+
+  it("preserves initialConfig non-customFilters settings and other domains on export", () => {
+    const initialConfig = {
+      version: "2026.920.1710",
+      filteringModes: {
+        none: [],
+        basic: [],
+        optimal: ["all-urls"],
+        complete: [],
+      },
+      customFilters: [
+        ["other.com", [".other-banner"]],
+        ["example.com", [".old-ad"]],
+      ] as [string, string[]][],
+      arbitrarySetting: "keep-me",
+    };
+
+    const client = new UbolWorkbenchClient({
+      domain: "example.com",
+      initialConfig,
+    });
+
+    client.hideText = ".new-ad\n.another-ad";
+    const exportedConfig = client.exportUbolConfig() as typeof initialConfig;
+
+    // Preserves fields outside customFilters
+    expect(exportedConfig.version).toBe("2026.920.1710");
+    expect(exportedConfig.filteringModes).toEqual({
+      none: [],
+      basic: [],
+      optimal: ["all-urls"],
+      complete: [],
+    });
+    expect(exportedConfig.arbitrarySetting).toBe("keep-me");
+
+    // Preserves other domains and updates current domain
+    expect(exportedConfig.customFilters).toEqual([
+      ["example.com", [".another-ad", ".new-ad"]],
+      ["other.com", [".other-banner"]],
+    ]);
+  });
 });

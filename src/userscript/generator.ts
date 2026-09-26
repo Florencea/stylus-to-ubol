@@ -16,13 +16,15 @@ export const generateUserscriptBundle = (
   });
 
   const serializedFilters = JSON.stringify(filters);
+  const serializedBackup = JSON.stringify(backup);
 
   const runtimeCode = `
 (() => {
   'use strict';
 
-  // Seed filters embedded from uBOL backup
+  // Seed filters and configuration embedded from uBOL backup
   const initialFilters = ${serializedFilters};
+  const initialBackup = ${serializedBackup};
 
   // 1. Converter Runtime
   function parseUbolToCss(filters, targetDomain, platform) {
@@ -374,17 +376,29 @@ export const generateUserscriptBundle = (
     onStyleChange: (text) => { currentStyle = text; applyStyles(); },
     onRescan: () => { modalEl.updateDiagnostics(diagnoseDeadCode(currentHide, currentStyle)); },
     onExport: () => {
-      const parts = [];
-      const cleanHide = currentHide.split(/[\\n,]/).map(s => s.trim()).filter(Boolean).join(', ');
-      if (cleanHide) parts.push(cleanHide + ' {\\n  display: none !important;\\n}');
-      if (currentStyle.trim()) parts.push(currentStyle.trim());
-      const rules = compileCssToUbolRules(parts.join('\\n\\n'), targetDomain);
-      const backup = { userResources: { userFilters: rules.join('\\n') }, schemaVersion: 1 };
-      const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+      const cleanHide = currentHide.split(/[\\n,]/).map(s => s.trim()).filter(Boolean).sort();
+      let exportConfig;
+      if (initialBackup && typeof initialBackup === 'object' && Array.isArray(initialBackup.customFilters)) {
+        const otherFilters = initialBackup.customFilters.filter(([domain]) => domain !== targetDomain);
+        const updatedFilters = cleanHide.length > 0 ? [...otherFilters, [targetDomain, cleanHide]] : otherFilters;
+        updatedFilters.sort(([a], [b]) => a.localeCompare(b));
+        exportConfig = {
+          ...initialBackup,
+          customFilters: updatedFilters
+        };
+      } else {
+        exportConfig = {
+          version: new Date().toISOString().slice(0, 10).replace(/-/g, '.'),
+          filteringModes: { none: [], basic: [], optimal: ['all-urls'], complete: [] },
+          customFilters: cleanHide.length > 0 ? [[targetDomain, cleanHide]] : []
+        };
+      }
+      const blob = new Blob([JSON.stringify(exportConfig, null, 2)], { type: 'application/json' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
       a.download = 'ubol-backup-' + targetDomain + '.json';
       a.click();
+      URL.revokeObjectURL(a.href);
     }
   });
 

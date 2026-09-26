@@ -1,29 +1,31 @@
 import { z } from "zod";
 import { splitSelectorList } from "./converter.ts";
 
-export const UbolConfigSchema = z.object({
-  version: z.string().optional(),
-  filteringModes: z
-    .object({
-      none: z.array(z.string()).default([]),
-      basic: z.array(z.string()).default([]),
-      optimal: z.array(z.string()).default([]),
-      complete: z.array(z.string()).default([]),
-    })
-    .optional(),
-  customFilters: z.array(z.tuple([z.string(), z.array(z.string())])),
-});
+export const UbolConfigSchema = z
+  .object({
+    version: z.string().optional(),
+    filteringModes: z
+      .object({
+        none: z.array(z.string()).default([]),
+        basic: z.array(z.string()).default([]),
+        optimal: z.array(z.string()).default([]),
+        complete: z.array(z.string()).default([]),
+      })
+      .optional(),
+    customFilters: z.array(z.tuple([z.string(), z.array(z.string())])),
+  })
+  .loose();
 
 export type UbolConfig = z.infer<typeof UbolConfigSchema>;
 
-export const UbolLegacyBackupSchema = z.object({
-  userResources: z.object({
-    userFilters: z.string(),
-  }),
-  schemaVersion: z.literal(1).optional().default(1),
-});
-
-export type UbolLegacyBackup = z.infer<typeof UbolLegacyBackupSchema>;
+const UbolLegacyBackupSchema = z
+  .object({
+    userResources: z.object({
+      userFilters: z.string(),
+    }),
+    schemaVersion: z.literal(1).optional().default(1),
+  })
+  .loose();
 
 export const UbolBackupSchema = z.union([
   UbolConfigSchema,
@@ -57,10 +59,37 @@ export const ubolConfigToFilterText = (config: UbolConfig): string => {
 
 export const filterTextToUbolConfig = (
   filters: string,
-  existingConfig?: Partial<UbolConfig>,
+  existingConfig?: Partial<UbolConfig> | Record<string, unknown>,
 ): UbolConfig => {
   const map = new Map<string, Set<string>>();
 
+  // 1. If existingConfig already has customFilters, initialize map with them
+  // to ensure existing custom filters are preserved.
+  if (
+    existingConfig &&
+    "customFilters" in existingConfig &&
+    Array.isArray(existingConfig.customFilters)
+  ) {
+    for (const item of existingConfig.customFilters) {
+      if (Array.isArray(item) && item.length >= 2) {
+        const domain =
+          typeof item[0] === "string" ? item[0].trim() : String(item[0]).trim();
+        const rawSelectors: unknown = item[1];
+        if (domain.length > 0 && Array.isArray(rawSelectors)) {
+          const set = map.get(domain) ?? new Set<string>();
+          map.set(domain, set);
+          for (const s of rawSelectors) {
+            const trimmed = typeof s === "string" ? s.trim() : String(s).trim();
+            if (trimmed.length > 0) {
+              set.add(trimmed);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 2. Parse new filter text
   const lines = filters.split("\n");
   for (const rawLine of lines) {
     const line = rawLine.trim();
@@ -82,33 +111,55 @@ export const filterTextToUbolConfig = (
     const subSelectors = splitSelectorList(rest);
 
     for (const d of domains) {
+      if (d.length === 0) continue;
       const set = map.get(d) ?? new Set<string>();
       map.set(d, set);
       for (const sel of subSelectors) {
-        set.add(sel);
+        const trimmed = sel.trim();
+        if (trimmed.length > 0) {
+          set.add(trimmed);
+        }
       }
     }
   }
 
+  // 3. Sort domains and selectors deterministically (alphabetically)
+  const sortedDomains = Array.from(map.keys())
+    .filter((d) => d.length > 0)
+    .sort();
   const customFilters: [string, string[]][] = [];
-  for (const [domain, set] of map.entries()) {
-    if (domain.length > 0 && set.size > 0) {
-      customFilters.push([domain, Array.from(set)]);
+  for (const domain of sortedDomains) {
+    const set = map.get(domain);
+    if (set && set.size > 0) {
+      const sortedSelectors = Array.from(set).sort();
+      customFilters.push([domain, sortedSelectors]);
     }
   }
 
-  return {
+  // 4. Preserve all original configuration settings outside customFilters
+  const baseConfig: Record<string, unknown> = existingConfig ?? {};
+  const filteringModes =
+    typeof baseConfig.filteringModes === "object" &&
+    baseConfig.filteringModes !== null
+      ? (baseConfig.filteringModes as UbolConfig["filteringModes"])
+      : {
+          none: [],
+          basic: [],
+          optimal: ["all-urls"],
+          complete: [],
+        };
+
+  const result: UbolConfig = {
+    ...baseConfig,
     version:
-      existingConfig?.version ??
-      new Date().toISOString().slice(0, 10).replace(/-/g, "."),
-    filteringModes: existingConfig?.filteringModes ?? {
-      none: [],
-      basic: [],
-      optimal: ["all-urls"],
-      complete: [],
-    },
+      typeof baseConfig.version === "string"
+        ? baseConfig.version
+        : new Date().toISOString().slice(0, 10).replace(/-/g, "."),
+    filteringModes,
     customFilters,
   };
+
+  return UbolConfigSchema.parse(result);
 };
 
 export const getFiltersFromBackup = (backup: UbolBackup): string => {

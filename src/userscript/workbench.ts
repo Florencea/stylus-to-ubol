@@ -141,6 +141,7 @@ export interface WorkbenchClientOptions {
   domain?: string;
   initialFilters?: string;
   injectedStyleId?: string;
+  initialConfig?: UbolConfig;
 }
 
 export class UbolWorkbenchClient {
@@ -148,6 +149,7 @@ export class UbolWorkbenchClient {
   public platform: Platform;
   public injectedStyleEl: HTMLStyleElement;
   public modalEl: UbolWorkbenchModal | null = null;
+  public initialConfig: UbolConfig | null = null;
 
   public hideText = "";
   public styleText = "";
@@ -160,6 +162,7 @@ export class UbolWorkbenchClient {
         : "example.com");
 
     this.platform = this.detectPlatform();
+    this.initialConfig = options?.initialConfig ?? null;
 
     const styleId = options?.injectedStyleId ?? "ubol-workbench-injected";
     let style =
@@ -280,6 +283,28 @@ export class UbolWorkbenchClient {
   }
 
   public exportUbolConfig(): UbolConfig {
+    const cleanHide = this.hideText
+      .split(/[\n,]/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0)
+      .sort();
+
+    if (this.initialConfig) {
+      const otherFilters = this.initialConfig.customFilters.filter(
+        ([domain]) => domain !== this.domain,
+      );
+      const updatedFilters: [string, string[]][] =
+        cleanHide.length > 0
+          ? [...otherFilters, [this.domain, cleanHide]]
+          : otherFilters;
+      updatedFilters.sort(([a], [b]) => a.localeCompare(b));
+
+      return {
+        ...this.initialConfig,
+        customFilters: updatedFilters,
+      };
+    }
+
     const backup = this.exportBackup();
     return filterTextToUbolConfig(getFiltersFromBackup(backup));
   }

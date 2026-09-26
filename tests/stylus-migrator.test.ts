@@ -1,9 +1,13 @@
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import { AstFilterParser } from "@gorhill/ubo-core/js/static-filtering-parser.js";
 import {
   migrateStylusJson,
   parseStylusSection,
 } from "../src/core/stylus-migrator.ts";
+import { runMigrateStylusCli } from "../src/cli/migrate-stylus.ts";
 import {
   filterTextToUbolConfig,
   getFiltersFromBackup,
@@ -227,35 +231,103 @@ describe("Stylus Migrator", () => {
 
     // Validate schema
     const parsed = UbolBackupSchema.parse(ubolBackup);
-    expect(isUbolConfig(parsed)).toBe(false);
-    expect(ubolBackup.schemaVersion).toBe(1);
+    expect(isUbolConfig(parsed)).toBe(true);
+    expect(UbolConfigSchema.parse(ubolBackup)).toBeDefined();
+    expect(ubolBackup.customFilters).toBeDefined();
+    expect(ubolBackup.filteringModes).toBeDefined();
+    expect(ubolBackup.filteringModes?.optimal).toEqual(["all-urls"]);
 
-    const filterLines = ubolBackup.userResources.userFilters.split("\n");
+    // Verify domains in customFilters
+    const domainNames = ubolBackup.customFilters.map(([d]) => d);
+    expect(domainNames).toContain("gist.github.com");
+    expect(domainNames).toContain("github.com");
+
+    const githubEntry = ubolBackup.customFilters.find(
+      ([d]) => d === "github.com",
+    );
+    expect(githubEntry).toBeDefined();
+    expect(githubEntry?.[1]).toContain(".feed-left");
+    expect(githubEntry?.[1]).toContain("#dashboard-sidebar");
+
+    // Verify ubolConfigToFilterText creates valid uBO cosmetic rules
+    const filterLines = ubolConfigToFilterText(ubolBackup).split("\n");
     expect(filterLines.length).toBeGreaterThan(0);
-
-    // Verify each line is valid uBO syntax
     for (const line of filterLines) {
-      if (line.trim().length === 0 || line.startsWith("!")) continue;
       validateRuleWithUbo(line);
     }
+  });
 
-    // Verify multi-domain prefix
-    expect(
-      filterLines.some((l: string) =>
-        l.startsWith(
-          "github.com,gist.github.com##.feed-left, #dashboard-sidebar",
-        ),
-      ),
-    ).toBe(true);
+  it("migrates legacy uBO backup (ubol-config-1.json format) to UbolConfig format", () => {
+    const legacyBackup = {
+      userResources: {
+        userFilters: [
+          "m.mobile01.com###_popIniFrame",
+          "m.mobile01.com###share-bar",
+          "vite.dev##.VPDocAside > :not(.VPDocAsideOutline)",
+          "example.com##body:style(color: red !important;)",
+        ].join("\n"),
+      },
+      schemaVersion: 1,
+    };
 
-    expect(
-      filterLines.some(
-        (l: string) =>
-          l.startsWith("github.com,gist.github.com##body:style") &&
-          l.includes("light-dark") &&
-          l.includes("!important"),
-      ),
-    ).toBe(true);
+    const result = migrateStylusJson(legacyBackup);
+    expect(isUbolConfig(result)).toBe(true);
+    expect(result.customFilters).toEqual([
+      ["m.mobile01.com", ["#_popIniFrame", "#share-bar"]],
+      ["vite.dev", [".VPDocAside > :not(.VPDocAsideOutline)"]],
+    ]);
+  });
+
+  it("preserves all original settings outside customFilters when existingConfig is provided", () => {
+    const existingConfig: UbolConfig & { customMeta: string } = {
+      version: "2026.920.1710",
+      filteringModes: {
+        none: ["trusted.example"],
+        basic: [],
+        optimal: ["all-urls"],
+        complete: ["strict.example"],
+      },
+      customFilters: [
+        ["preserve.domain.com", [".keep-me"]],
+        ["m.mobile01.com", [".old-banner"]],
+      ],
+      customMeta: "never-touch-this-value",
+    };
+
+    const stylusInput = [
+      {
+        enabled: true,
+        sections: [
+          {
+            code: ".new-ad { display: none !important; }",
+            domains: ["m.mobile01.com"],
+          },
+        ],
+      },
+    ];
+
+    const result = migrateStylusJson(
+      stylusInput,
+      existingConfig,
+    ) as UbolConfig & {
+      customMeta: string;
+    };
+
+    // Areas outside customFilters MUST NOT be touched
+    expect(result.version).toBe("2026.920.1710");
+    expect(result.filteringModes).toEqual({
+      none: ["trusted.example"],
+      basic: [],
+      optimal: ["all-urls"],
+      complete: ["strict.example"],
+    });
+    expect(result.customMeta).toBe("never-touch-this-value");
+
+    // customFilters should preserve existing domains and merge selectors for m.mobile01.com
+    expect(result.customFilters).toEqual([
+      ["m.mobile01.com", [".new-ad", ".old-banner"]],
+      ["preserve.domain.com", [".keep-me"]],
+    ]);
   });
 
   it("normalizes legacy single-colon pseudo-elements in Stylus CSS", () => {
@@ -349,13 +421,7 @@ describe("Stylus Migrator", () => {
     expect(roundTripped.customFilters).toEqual(nativeConfig.customFilters);
   });
 
-  it("runs CLI migrate-stylus correctly to file output", async () => {
-    const fs = await import("node:fs");
-    const os = await import("node:os");
-    const path = await import("node:path");
-    const { runMigrateStylusCli } =
-      await import("../src/cli/migrate-stylus.ts");
-
+  it("runs CLI migrate-stylus correctly to file output", () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "stylus-cli-test-"));
     const inputFile = path.join(tmpDir, "input.json");
     const outputFile = path.join(tmpDir, "output.json");
@@ -376,11 +442,84 @@ describe("Stylus Migrator", () => {
     runMigrateStylusCli([inputFile, outputFile]);
 
     const outputContent = fs.readFileSync(outputFile, "utf-8");
-    const parsed = JSON.parse(outputContent) as {
-      userResources: { userFilters: string };
-    };
-    expect(parsed.userResources.userFilters).toContain("cli-test.com##.banner");
+    const parsed = JSON.parse(outputContent) as UbolConfig;
+    expect(isUbolConfig(parsed)).toBe(true);
+    expect(parsed.customFilters).toEqual([["cli-test.com", [".banner"]]]);
 
     fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("runs CLI migrate-stylus with --config preserving base settings and merging rules", () => {
+    const tmpDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "ubol-cli-test-config-"),
+    );
+    const inputFile = path.join(tmpDir, "input.json");
+    const configFile = path.join(tmpDir, "base.json");
+    const outputFile = path.join(tmpDir, "output.json");
+
+    const baseConfig = {
+      version: "2026.920.1710",
+      filteringModes: {
+        none: [],
+        basic: [],
+        optimal: ["all-urls"],
+        complete: [],
+      },
+      customFilters: [["existing.com", [".existing-hide"]]],
+      arbitraryData: 42,
+    };
+
+    const stylusData = [
+      {
+        enabled: true,
+        sections: [
+          {
+            code: ".new-hide { display: none !important; }",
+            domains: ["new.com"],
+          },
+        ],
+      },
+    ];
+
+    fs.writeFileSync(inputFile, JSON.stringify(stylusData), "utf-8");
+    fs.writeFileSync(configFile, JSON.stringify(baseConfig), "utf-8");
+
+    runMigrateStylusCli([inputFile, outputFile, "--config", configFile]);
+
+    const outputContent = fs.readFileSync(outputFile, "utf-8");
+    const parsed = JSON.parse(outputContent) as typeof baseConfig;
+
+    // Preserved non-customFilters settings
+    expect(parsed.version).toBe("2026.920.1710");
+    expect(parsed.filteringModes.optimal).toEqual(["all-urls"]);
+    expect(parsed.arbitraryData).toBe(42);
+
+    // Merged customFilters
+    expect(parsed.customFilters).toEqual([
+      ["existing.com", [".existing-hide"]],
+      ["new.com", [".new-hide"]],
+    ]);
+
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("migrates real ubol-config-1.json into ubol-config.json format", () => {
+    const c1Path = path.resolve(process.cwd(), "ubol-config-1.json");
+    if (!fs.existsSync(c1Path)) return;
+
+    const c1Content = fs.readFileSync(c1Path, "utf-8");
+    const migrated = migrateStylusJson(c1Content);
+
+    expect(isUbolConfig(migrated)).toBe(true);
+    expect(UbolConfigSchema.parse(migrated)).toBeDefined();
+
+    // Verify key domains from ubol-config.json are present
+    const domains = migrated.customFilters.map(([d]) => d);
+    expect(domains).toContain("m.mobile01.com");
+    expect(domains).toContain("nebula.zyxel.com");
+    expect(domains).toContain("share.dmhy.org");
+    expect(domains).toContain("vite.dev");
+    expect(domains).toContain("www.elle.com");
+    expect(domains).toContain("www.mobile01.com");
   });
 });

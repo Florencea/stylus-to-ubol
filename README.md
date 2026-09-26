@@ -32,15 +32,25 @@ A serverless, pure frontend custom style management and debugging workbench usin
 ```ts
 import { z } from "zod";
 
-export const UbolBackupSchema = z.object({
-  userResources: z.object({
-    userFilters: z.string(),
-  }),
-  schemaVersion: z.literal(1),
-});
+export const UbolConfigSchema = z
+  .object({
+    version: z.string().optional(),
+    filteringModes: z
+      .object({
+        none: z.array(z.string()).default([]),
+        basic: z.array(z.string()).default([]),
+        optimal: z.array(z.string()).default([]),
+        complete: z.array(z.string()).default([]),
+      })
+      .optional(),
+    customFilters: z.array(z.tuple([z.string(), z.array(z.string())])),
+  })
+  .passthrough();
 
-export type UbolBackup = z.infer<typeof UbolBackupSchema>;
+export type UbolConfig = z.infer<typeof UbolConfigSchema>;
 ```
+
+Settings outside `customFilters` (such as `version`, `filteringModes`, and any extension preferences) are preserved untouched when reading and exporting uBOL backups.
 
 ### 2. Bidirectional Conversion Rules
 
