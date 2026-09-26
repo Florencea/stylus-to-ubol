@@ -1,12 +1,5 @@
-import postcss from "postcss";
-import nested from "postcss-nested";
+import * as csstree from "css-tree";
 import { AstFilterParser } from "@gorhill/ubo-core/js/static-filtering-parser.js";
-import {
-  compileSelectorMapToRules,
-  normalizeSelector,
-  splitSelectorList,
-  type SelectorStyles,
-} from "./converter.ts";
 import {
   filterTextToUbolConfig,
   isUbolConfig,
@@ -34,6 +27,17 @@ export interface AllUbolConfigs {
   complete: UbolConfig;
 }
 
+interface SelectorEntry {
+  selector: string;
+  lightMap: Map<string, string>;
+  darkMap: Map<string, string>;
+}
+
+interface CompiledRules {
+  cosmeticRules: string[];
+  styleRules: string[];
+}
+
 interface StylusSection {
   code?: string;
   domains?: string[];
@@ -47,6 +51,123 @@ interface StylusStyle {
   enabled?: boolean;
   sections?: StylusSection[];
 }
+
+export const normalizeSelector = (selector: string): string => {
+  return selector
+    .replace(
+      /(?<!:):(before|after|first-letter|first-line|placeholder)\b/g,
+      "::$1",
+    )
+    .trim();
+};
+
+const resolveSelectors = (
+  parentSelectors: string[] | undefined,
+  childSelectors: string[],
+): string[] => {
+  if (!parentSelectors || parentSelectors.length === 0) {
+    return childSelectors;
+  }
+  const result: string[] = [];
+  for (const parent of parentSelectors) {
+    for (const child of childSelectors) {
+      if (child.includes("&")) {
+        result.push(child.replaceAll("&", parent).trim());
+      } else {
+        result.push(`${parent} ${child}`.trim());
+      }
+    }
+  }
+  return result;
+};
+
+const compileSelectorMapToRules = (
+  selectorMap: Map<string, SelectorEntry>,
+  prefix: string,
+): CompiledRules => {
+  const cosmeticRules: string[] = [];
+  const styleRules: string[] = [];
+  let needsColorScheme = false;
+
+  for (const entry of selectorMap.values()) {
+    const { selector, lightMap, darkMap } = entry;
+    const allProps = new Set([...lightMap.keys(), ...darkMap.keys()]);
+    if (allProps.size === 0) continue;
+
+    const isPureHide =
+      allProps.size === 1 &&
+      allProps.has("display") &&
+      (lightMap.get("display") ?? "").toLowerCase() === "none" &&
+      (!darkMap.has("display") ||
+        (darkMap.get("display") ?? "").toLowerCase() === "none");
+
+    if (isPureHide) {
+      cosmeticRules.push(`${prefix}${selector}`);
+      continue;
+    }
+
+    const standardDecls: string[] = [];
+    const darkDecls: string[] = [];
+
+    for (const prop of allProps) {
+      const lightVal = lightMap.get(prop);
+      const darkVal = darkMap.get(prop);
+
+      if (lightVal !== undefined && darkVal !== undefined) {
+        if (lightVal === darkVal) {
+          standardDecls.push(`${prop}: ${lightVal} !important;`);
+        } else {
+          standardDecls.push(
+            `${prop}: light-dark(${lightVal}, ${darkVal}) !important;`,
+          );
+          needsColorScheme = true;
+        }
+      } else if (lightVal !== undefined) {
+        standardDecls.push(`${prop}: ${lightVal} !important;`);
+      } else if (darkVal !== undefined) {
+        darkDecls.push(`${prop}: ${darkVal} !important;`);
+      }
+    }
+
+    if (standardDecls.length > 0) {
+      styleRules.push(`${prefix}${selector}:style(${standardDecls.join(" ")})`);
+    }
+
+    if (darkDecls.length > 0) {
+      styleRules.push(
+        `${prefix}${selector}:matches-media((prefers-color-scheme: dark)):style(${darkDecls.join(" ")})`,
+      );
+    }
+  }
+
+  if (needsColorScheme) {
+    let hasColorSchemeSet = false;
+    for (let i = 0; i < styleRules.length; i++) {
+      const rule = styleRules[i];
+      if (
+        rule &&
+        (rule.includes("##:root:style") || rule.includes("##html:style"))
+      ) {
+        if (!rule.includes("color-scheme:")) {
+          styleRules[i] = rule.replace(
+            /:style\(/,
+            ":style(color-scheme: light dark !important; ",
+          );
+        }
+        hasColorSchemeSet = true;
+        break;
+      }
+    }
+
+    if (!hasColorSchemeSet) {
+      styleRules.unshift(
+        `${prefix}:root:style(color-scheme: light dark !important;)`,
+      );
+    }
+  }
+
+  return { cosmeticRules, styleRules };
+};
 
 const extractDomainsFromSection = (section: StylusSection): string[] => {
   const domains = new Set<string>();
@@ -93,90 +214,158 @@ export const parseStylusSection = (
   const domainPrefix = hasDomains ? cleanedDomains.join(",") : "*";
   const prefix = `${domainPrefix}##`;
 
-  // Process nesting first with postcss-nested
-  const processed = postcss([nested()]).process(css, { from: undefined }).root;
+  if (css.trim().length === 0) {
+    return {
+      cosmeticRules: [],
+      styleRules: [],
+      scopedCosmeticRules: { global: [], desktop: [], mobile: [] },
+      scopedStyleRules: { global: [], desktop: [], mobile: [] },
+    };
+  }
 
-  const scopeMap = new Map<RuleScope, Map<string, SelectorStyles>>([
-    ["global", new Map<string, SelectorStyles>()],
-    ["desktop", new Map<string, SelectorStyles>()],
-    ["mobile", new Map<string, SelectorStyles>()],
+  const ast = csstree.parse(css, {
+    positions: true,
+    parseAtrulePrelude: true,
+    parseRulePrelude: true,
+  });
+
+  const scopeMap = new Map<RuleScope, Map<string, SelectorEntry>>([
+    ["global", new Map<string, SelectorEntry>()],
+    ["desktop", new Map<string, SelectorEntry>()],
+    ["mobile", new Map<string, SelectorEntry>()],
   ]);
 
-  const getOrCreateSelector = (
+  const getOrCreateEntry = (
     selector: string,
     scope: RuleScope,
-  ): SelectorStyles => {
+  ): SelectorEntry => {
     let map = scopeMap.get(scope);
     if (!map) {
-      map = new Map<string, SelectorStyles>();
+      map = new Map<string, SelectorEntry>();
       scopeMap.set(scope, map);
     }
     let entry = map.get(selector);
     if (!entry) {
       entry = {
         selector,
-        baseDecls: new Map<string, string>(),
-        lightDecls: new Map<string, string>(),
-        darkDecls: new Map<string, string>(),
+        lightMap: new Map<string, string>(),
+        darkMap: new Map<string, string>(),
       };
       map.set(selector, entry);
     }
     return entry;
   };
 
-  processed.walkRules((rule) => {
-    // Normalize selector (normalize whitespace across multiline selectors)
-    const rawSelectors = splitSelectorList(rule.selector);
-    const normalizedSelector = rawSelectors
-      .map((s) => normalizeSelector(s))
-      .filter((s) => s.length > 0)
-      .join(", ");
+  const selectorStack: string[][] = [];
+  const mediaStack: {
+    isDark: boolean;
+    isLight: boolean;
+    scope: RuleScope | null;
+    raw: string;
+  }[] = [];
 
-    if (normalizedSelector.length === 0) return;
+  csstree.walk(ast, {
+    enter(node: csstree.CssNode) {
+      if (node.type === "Atrule") {
+        if (node.name === "media") {
+          const rawPrelude = node.prelude ? csstree.generate(node.prelude) : "";
+          const preludeStr = rawPrelude.toLowerCase();
+          const isDark = /prefers-color-scheme\s*:\s*dark/.test(preludeStr);
+          const isLight = /prefers-color-scheme\s*:\s*light/.test(preludeStr);
+          const pointerCoarse = /pointer\s*:\s*coarse/.test(preludeStr);
+          const pointerFine = /pointer\s*:\s*fine/.test(preludeStr);
+          const notPointerCoarse = /not\s+.*pointer\s*:\s*coarse/.test(
+            preludeStr,
+          );
 
-    // Check if this rule is nested inside @media (prefers-color-scheme: dark) or light
-    // and whether pointer media query designates desktop vs mobile scope
-    let isDarkMedia = false;
-    let isLightMedia = false;
-    let ruleScope: RuleScope = defaultScope;
-
-    let parent = rule.parent;
-    while (parent && parent.type !== "root") {
-      if (parent.type === "atrule" && parent.name === "media") {
-        const params = parent.params.toLowerCase();
-        if (/prefers-color-scheme\s*:\s*dark/.test(params)) {
-          isDarkMedia = true;
-        } else if (/prefers-color-scheme\s*:\s*light/.test(params)) {
-          isLightMedia = true;
-        }
-
-        if (/pointer\s*:\s*coarse/.test(params)) {
-          if (/not\s+.*pointer\s*:\s*coarse/.test(params)) {
-            ruleScope = "desktop";
-          } else {
-            ruleScope = "mobile";
+          if (!isDark && !isLight && !pointerCoarse && !pointerFine) {
+            throw new Error(
+              `Unsupported @media query: ${rawPrelude}. @media is strictly forbidden in uBOL rules.`,
+            );
           }
-        } else if (/pointer\s*:\s*fine/.test(params)) {
-          ruleScope = "desktop";
+
+          let scope: RuleScope | null = null;
+          if (pointerCoarse) {
+            scope = notPointerCoarse ? "desktop" : "mobile";
+          } else if (pointerFine) {
+            scope = "desktop";
+          }
+
+          mediaStack.push({ isDark, isLight, scope, raw: preludeStr });
+        } else {
+          return csstree.walk.skip;
+        }
+      } else if (node.type === "Rule") {
+        const rawSelectors: string[] = [];
+        if (node.prelude.type === "SelectorList") {
+          node.prelude.children.forEach((child: csstree.CssNode) => {
+            const raw = child.loc
+              ? css.slice(child.loc.start.offset, child.loc.end.offset)
+              : csstree.generate(child);
+            const str = raw
+              .replace(/\/\*[\s\S]*?\*\//g, "")
+              .trim()
+              .replace(/\s+/g, " ");
+            if (str.length > 0) {
+              rawSelectors.push(str);
+            }
+          });
+        } else {
+          const raw = node.prelude.loc
+            ? css.slice(
+                node.prelude.loc.start.offset,
+                node.prelude.loc.end.offset,
+              )
+            : csstree.generate(node.prelude);
+          const str = raw
+            .replace(/\/\*[\s\S]*?\*\//g, "")
+            .trim()
+            .replace(/\s+/g, " ");
+          if (str.length > 0) {
+            rawSelectors.push(str);
+          }
+        }
+
+        const parentSels = selectorStack[selectorStack.length - 1];
+        const resolved = resolveSelectors(parentSels, rawSelectors)
+          .map(normalizeSelector)
+          .filter((s) => s.length > 0);
+        selectorStack.push(resolved);
+      } else if (node.type === "Declaration") {
+        const currentSels = selectorStack[selectorStack.length - 1];
+        if (!currentSels || currentSels.length === 0) return;
+
+        const isDark = mediaStack.some((m) => m.isDark);
+        const activeScope =
+          [...mediaStack].reverse().find((m) => m.scope !== null)?.scope ??
+          defaultScope;
+
+        const prop = node.property.trim();
+        const rawVal = node.value.loc
+          ? css.slice(node.value.loc.start.offset, node.value.loc.end.offset)
+          : csstree.generate(node.value);
+        const val = rawVal
+          .replace(/\/\*[\s\S]*?\*\//g, "")
+          .replace(/\s*!important\s*$/i, "")
+          .trim();
+
+        for (const sel of currentSels) {
+          const entry = getOrCreateEntry(sel, activeScope);
+          if (isDark) {
+            entry.darkMap.set(prop, val);
+          } else {
+            entry.lightMap.set(prop, val);
+          }
         }
       }
-      parent = parent.parent;
-    }
-
-    const entry = getOrCreateSelector(normalizedSelector, ruleScope);
-
-    rule.walkDecls((decl) => {
-      const prop = decl.prop.trim();
-      const val = decl.value.trim();
-
-      if (isDarkMedia) {
-        entry.darkDecls.set(prop, val);
-      } else if (isLightMedia) {
-        entry.lightDecls.set(prop, val);
-      } else {
-        entry.baseDecls.set(prop, val);
+    },
+    leave(node: csstree.CssNode) {
+      if (node.type === "Atrule" && node.name === "media") {
+        mediaStack.pop();
+      } else if (node.type === "Rule") {
+        selectorStack.pop();
       }
-    });
+    },
   });
 
   const scopedCosmeticRules: Record<RuleScope, string[]> = {
@@ -191,17 +380,14 @@ export const parseStylusSection = (
   };
 
   const scopes: RuleScope[] = ["global", "desktop", "mobile"];
-
   for (const scope of scopes) {
     const selectorMap = scopeMap.get(scope);
     if (!selectorMap) continue;
 
-    const { cosmeticRules, styleRules } = compileSelectorMapToRules(
-      selectorMap,
-      prefix,
-    );
-    scopedCosmeticRules[scope] = cosmeticRules;
-    scopedStyleRules[scope] = styleRules;
+    const { cosmeticRules: cRules, styleRules: sRules } =
+      compileSelectorMapToRules(selectorMap, prefix);
+    scopedCosmeticRules[scope] = cRules;
+    scopedStyleRules[scope] = sRules;
   }
 
   const cosmeticRules = [

@@ -29,7 +29,8 @@ describe("Converter Core", () => {
       `;
       const rules = compileCssToUbolRules(css, "example.com");
       expect(rules).toEqual([
-        "example.com##.ad-banner, #sidebar",
+        "example.com##.ad-banner",
+        "example.com###sidebar",
         "example.com##.ad-footer",
       ]);
       for (const r of rules) validateRuleWithUbo(r);
@@ -89,10 +90,12 @@ describe("Converter Core", () => {
       expect(cardRule).toContain("font-size: 14px !important;");
       // Light-only property
       expect(cardRule).toContain("border-color: #e0e0e0 !important;");
-      // Dark-only property -> light-dark(initial, val)
-      expect(cardRule).toContain(
-        "box-shadow: light-dark(initial, 0 0 10px #000) !important;",
+      // Dark-only property -> :matches-media((prefers-color-scheme: dark))
+      const darkCardRule = rules.find((r) =>
+        r.includes("##.card:matches-media((prefers-color-scheme: dark)):style"),
       );
+      expect(darkCardRule).toBeDefined();
+      expect(darkCardRule).toContain("box-shadow: 0 0 10px #000 !important;");
 
       // Root rule should contain color-scheme
       const rootRule = rules.find((r) => r.includes("##:root:style"));
@@ -214,7 +217,7 @@ describe("Converter Core", () => {
       const rules = compileCssToUbolRules(css, "example.com");
       expect(rules.some((r) => r.includes("light-dark"))).toBe(false);
       expect(rules).toContain(
-        "example.com##:matches-media((prefers-color-scheme: dark)) img:style(filter: invert(1) !important; -webkit-filter: invert(1) !important;)",
+        "example.com##img:matches-media((prefers-color-scheme: dark)):style(filter: invert(1) !important; -webkit-filter: invert(1) !important;)",
       );
       for (const r of rules) validateRuleWithUbo(r);
     });
@@ -229,14 +232,14 @@ describe("Converter Core", () => {
       `;
       const rules = compileCssToUbolRules(css, "example.com");
       expect(rules).toEqual([
-        "example.com##:matches-media((prefers-color-scheme: dark)) img:style(filter: invert(1) !important;)",
-        "example.com##:matches-media((prefers-color-scheme: dark)) svg:style(filter: invert(1) !important;)",
-        "example.com##:matches-media((prefers-color-scheme: dark)) video:style(filter: invert(1) !important;)",
+        "example.com##img:matches-media((prefers-color-scheme: dark)):style(filter: invert(1) !important;)",
+        "example.com##svg:matches-media((prefers-color-scheme: dark)):style(filter: invert(1) !important;)",
+        "example.com##video:matches-media((prefers-color-scheme: dark)):style(filter: invert(1) !important;)",
       ]);
       for (const r of rules) validateRuleWithUbo(r);
     });
 
-    it("compiles base filter and dark filter into separate unconditional and :matches-media rules", () => {
+    it("compiles base filter and dark filter into synthesized light-dark rule with color-scheme", () => {
       const css = `
         img {
           filter: grayscale(1);
@@ -249,8 +252,8 @@ describe("Converter Core", () => {
       `;
       const rules = compileCssToUbolRules(css, "example.com");
       expect(rules).toEqual([
-        "example.com##img:style(filter: grayscale(1) !important;)",
-        "example.com##:matches-media((prefers-color-scheme: dark)) img:style(filter: invert(1) !important;)",
+        "example.com##:root:style(color-scheme: light dark !important;)",
+        "example.com##img:style(filter: light-dark(grayscale(1), invert(1)) !important;)",
       ]);
       for (const r of rules) validateRuleWithUbo(r);
     });

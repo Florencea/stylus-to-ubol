@@ -40,7 +40,8 @@ describe("Stylus Migrator", () => {
     `;
     const result = parseStylusSection(css, ["example.com"]);
     expect(result.cosmeticRules).toEqual([
-      "example.com##.ad-banner, #sidebar",
+      "example.com##.ad-banner",
+      "example.com###sidebar",
       "example.com##.popup",
     ]);
     expect(result.styleRules).toHaveLength(0);
@@ -641,6 +642,7 @@ describe("Stylus Migrator", () => {
               @media (prefers-color-scheme: dark) {
                 img, video {
                   filter: invert(1) hue-rotate(180deg);
+                  opacity: 0.8;
                 }
               }
             `,
@@ -653,20 +655,20 @@ describe("Stylus Migrator", () => {
     expect(result.customFilters).toHaveLength(0);
     expect(result.sandboxFilters).toBeDefined();
 
-    // Check base filter rules (individual sub-selectors)
+    // Check synthesized light-dark filter rules (individual sub-selectors)
     expect(result.sandboxFilters).toContain(
-      "darksite.com##img:style(filter: grayscale(0.5) !important;)",
+      "darksite.com##img:style(filter: light-dark(grayscale(0.5), invert(1) hue-rotate(180deg)) !important;)",
     );
     expect(result.sandboxFilters).toContain(
-      "darksite.com##video:style(filter: grayscale(0.5) !important;)",
+      "darksite.com##video:style(filter: light-dark(grayscale(0.5), invert(1) hue-rotate(180deg)) !important;)",
     );
 
-    // Check dark filter rules (individual sub-selectors)
+    // Check dark unmerged opacity rules (individual sub-selectors)
     expect(result.sandboxFilters).toContain(
-      "darksite.com##:matches-media((prefers-color-scheme: dark)) img:style(filter: invert(1) hue-rotate(180deg) !important;)",
+      "darksite.com##img:matches-media((prefers-color-scheme: dark)):style(opacity: 0.8 !important;)",
     );
     expect(result.sandboxFilters).toContain(
-      "darksite.com##:matches-media((prefers-color-scheme: dark)) video:style(filter: invert(1) hue-rotate(180deg) !important;)",
+      "darksite.com##video:matches-media((prefers-color-scheme: dark)):style(opacity: 0.8 !important;)",
     );
 
     for (const r of result.sandboxFilters ?? []) {
