@@ -239,7 +239,7 @@ describe("Converter Core", () => {
       for (const r of rules) validateRuleWithUbo(r);
     });
 
-    it("compiles base filter and dark filter into synthesized light-dark rule with color-scheme", () => {
+    it("compiles base filter and dark filter into separate unconditional and :matches-media rules", () => {
       const css = `
         img {
           filter: grayscale(1);
@@ -252,8 +252,27 @@ describe("Converter Core", () => {
       `;
       const rules = compileCssToUbolRules(css, "example.com");
       expect(rules).toEqual([
+        "example.com##img:style(filter: grayscale(1) !important;)",
+        "example.com##img:matches-media((prefers-color-scheme: dark)):style(filter: invert(1) !important;)",
+      ]);
+      for (const r of rules) validateRuleWithUbo(r);
+    });
+
+    it("compiles base color and dark color into synthesized light-dark rule with color-scheme", () => {
+      const css = `
+        img {
+          background-color: #ffffff;
+        }
+        @media (prefers-color-scheme: dark) {
+          img {
+            background-color: #000000;
+          }
+        }
+      `;
+      const rules = compileCssToUbolRules(css, "example.com");
+      expect(rules).toEqual([
         "example.com##:root:style(color-scheme: light dark !important;)",
-        "example.com##img:style(filter: light-dark(grayscale(1), invert(1)) !important;)",
+        "example.com##img:style(background-color: light-dark(#ffffff, #000000) !important;)",
       ]);
       for (const r of rules) validateRuleWithUbo(r);
     });

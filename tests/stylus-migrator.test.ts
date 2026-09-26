@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import { AstFilterParser } from "@gorhill/ubo-core/js/static-filtering-parser.js";
 import {
+  isColorProperty,
   migrateStylusJson,
   migrateStylusJsonAll,
   migrateStylusJsonDual,
@@ -655,20 +656,20 @@ describe("Stylus Migrator", () => {
     expect(result.customFilters).toHaveLength(0);
     expect(result.sandboxFilters).toBeDefined();
 
-    // Check synthesized light-dark filter rules (individual sub-selectors)
+    // Check base filter rules (individual sub-selectors)
     expect(result.sandboxFilters).toContain(
-      "darksite.com##img:style(filter: light-dark(grayscale(0.5), invert(1) hue-rotate(180deg)) !important;)",
+      "darksite.com##img:style(filter: grayscale(0.5) !important;)",
     );
     expect(result.sandboxFilters).toContain(
-      "darksite.com##video:style(filter: light-dark(grayscale(0.5), invert(1) hue-rotate(180deg)) !important;)",
+      "darksite.com##video:style(filter: grayscale(0.5) !important;)",
     );
 
-    // Check dark unmerged opacity rules (individual sub-selectors)
+    // Check dark rules (individual sub-selectors)
     expect(result.sandboxFilters).toContain(
-      "darksite.com##img:matches-media((prefers-color-scheme: dark)):style(opacity: 0.8 !important;)",
+      "darksite.com##img:matches-media((prefers-color-scheme: dark)):style(filter: invert(1) hue-rotate(180deg) !important; opacity: 0.8 !important;)",
     );
     expect(result.sandboxFilters).toContain(
-      "darksite.com##video:matches-media((prefers-color-scheme: dark)):style(opacity: 0.8 !important;)",
+      "darksite.com##video:matches-media((prefers-color-scheme: dark)):style(filter: invert(1) hue-rotate(180deg) !important; opacity: 0.8 !important;)",
     );
 
     for (const r of result.sandboxFilters ?? []) {
@@ -877,5 +878,172 @@ describe("Stylus Migrator", () => {
       for (const sel of sels) validateRuleWithUbo(`${domain}##${sel}`);
     }
     for (const r of dual.mobile.sandboxFilters ?? []) validateRuleWithUbo(r);
+  });
+
+  it("identifies color-compatible properties correctly with isColorProperty helper", () => {
+    // Standard color properties
+    expect(isColorProperty("color")).toBe(true);
+    expect(isColorProperty("background-color")).toBe(true);
+    expect(isColorProperty("border-color")).toBe(true);
+    expect(isColorProperty("outline-color")).toBe(true);
+    expect(isColorProperty("box-shadow")).toBe(true);
+    expect(isColorProperty("text-shadow")).toBe(true);
+    expect(isColorProperty("accent-color")).toBe(true);
+    expect(isColorProperty("caret-color")).toBe(true);
+    expect(isColorProperty("fill")).toBe(true);
+    expect(isColorProperty("stroke")).toBe(true);
+    expect(isColorProperty("background")).toBe(true);
+    expect(isColorProperty("border")).toBe(true);
+    expect(isColorProperty("outline")).toBe(true);
+    expect(isColorProperty("border-top-color")).toBe(true);
+    expect(isColorProperty("scrollbar-color")).toBe(true);
+    expect(isColorProperty("-webkit-text-fill-color")).toBe(true);
+    expect(isColorProperty("-webkit-box-shadow")).toBe(true);
+
+    // Custom properties
+    expect(isColorProperty("--theme-primary")).toBe(true);
+    expect(isColorProperty("--bg-color")).toBe(true);
+    expect(isColorProperty("--custom-spacing")).toBe(true);
+
+    // Non-color properties
+    expect(isColorProperty("opacity")).toBe(false);
+    expect(isColorProperty("filter")).toBe(false);
+    expect(isColorProperty("-webkit-filter")).toBe(false);
+    expect(isColorProperty("font-size")).toBe(false);
+    expect(isColorProperty("display")).toBe(false);
+    expect(isColorProperty("width")).toBe(false);
+    expect(isColorProperty("height")).toBe(false);
+    expect(isColorProperty("margin")).toBe(false);
+    expect(isColorProperty("padding")).toBe(false);
+    expect(isColorProperty("transform")).toBe(false);
+    expect(isColorProperty("z-index")).toBe(false);
+  });
+
+  it("falls back to :matches-media instead of light-dark() for non-color properties (e.g. opacity)", () => {
+    const css = `
+      .badge {
+        color: #111111;
+        opacity: 0.9;
+        font-size: 14px;
+      }
+      @media (prefers-color-scheme: dark) {
+        .badge {
+          color: #eeeeee;
+          opacity: 0.5;
+          font-size: 16px;
+        }
+      }
+    `;
+    const result = parseStylusSection(css, ["example.com"]);
+    expect(result.cosmeticRules).toHaveLength(0);
+
+    // Color property synthesizes light-dark()
+    const baseRule = result.styleRules.find(
+      (r) => r.includes(".badge:style") && !r.includes(":matches-media"),
+    );
+    expect(baseRule).toBeDefined();
+    expect(baseRule).toContain(
+      "color: light-dark(#111111, #eeeeee) !important;",
+    );
+    expect(baseRule).toContain("opacity: 0.9 !important;");
+    expect(baseRule).toContain("font-size: 14px !important;");
+    expect(baseRule).not.toContain("light-dark(0.9, 0.5)");
+    expect(baseRule).not.toContain("light-dark(14px, 16px)");
+
+    // Non-color properties must fall back to :matches-media
+    const darkRule = result.styleRules.find((r) =>
+      r.includes(".badge:matches-media((prefers-color-scheme: dark)):style"),
+    );
+    expect(darkRule).toBeDefined();
+    expect(darkRule).toContain("opacity: 0.5 !important;");
+    expect(darkRule).toContain("font-size: 16px !important;");
+    expect(darkRule).not.toContain("color:");
+
+    for (const rule of result.styleRules) {
+      validateRuleWithUbo(rule);
+    }
+  });
+
+  it("properly flattens CSS native nested rules (with and without &) to top-level compound selectors", () => {
+    const css = `
+      .card, .panel {
+        background: #ffffff;
+        
+        /* nested without & */
+        .title {
+          font-size: 16px;
+          span {
+            font-weight: bold;
+          }
+        }
+
+        /* nested with & */
+        &.highlighted {
+          border-color: #ff0000;
+        }
+
+        &:hover {
+          background: #f0f0f0;
+        }
+
+        &::after {
+          content: "";
+        }
+
+        /* nested pure hide */
+        .ad {
+          display: none !important;
+        }
+      }
+    `;
+    const result = parseStylusSection(css, ["example.com"]);
+
+    // Pure hide in nested rule should be flattened into cosmeticRules
+    expect(result.cosmeticRules).toEqual([
+      "example.com##.card .ad",
+      "example.com##.panel .ad",
+    ]);
+
+    // Check style rules are flattened compound selectors
+    expect(result.styleRules).toContain(
+      "example.com##.card:style(background: #ffffff !important;)",
+    );
+    expect(result.styleRules).toContain(
+      "example.com##.panel:style(background: #ffffff !important;)",
+    );
+    expect(result.styleRules).toContain(
+      "example.com##.card .title:style(font-size: 16px !important;)",
+    );
+    expect(result.styleRules).toContain(
+      "example.com##.panel .title:style(font-size: 16px !important;)",
+    );
+    expect(result.styleRules).toContain(
+      "example.com##.card .title span:style(font-weight: bold !important;)",
+    );
+    expect(result.styleRules).toContain(
+      "example.com##.panel .title span:style(font-weight: bold !important;)",
+    );
+    expect(result.styleRules).toContain(
+      "example.com##.card.highlighted:style(border-color: #ff0000 !important;)",
+    );
+    expect(result.styleRules).toContain(
+      "example.com##.panel.highlighted:style(border-color: #ff0000 !important;)",
+    );
+    expect(result.styleRules).toContain(
+      "example.com##.card:hover:style(background: #f0f0f0 !important;)",
+    );
+    expect(result.styleRules).toContain(
+      "example.com##.panel:hover:style(background: #f0f0f0 !important;)",
+    );
+    expect(result.styleRules).toContain(
+      'example.com##.card::after:style(content: "" !important;)',
+    );
+    expect(result.styleRules).toContain(
+      'example.com##.panel::after:style(content: "" !important;)',
+    );
+
+    for (const rule of [...result.cosmeticRules, ...result.styleRules]) {
+      validateRuleWithUbo(rule);
+    }
   });
 });

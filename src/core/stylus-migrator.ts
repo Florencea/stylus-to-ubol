@@ -81,6 +81,39 @@ const resolveSelectors = (
   return result;
 };
 
+const COLOR_PROPERTIES = new Set([
+  "box-shadow",
+  "text-shadow",
+  "fill",
+  "stroke",
+  "outline",
+  "border",
+  "border-top",
+  "border-right",
+  "border-bottom",
+  "border-left",
+  "border-inline",
+  "border-inline-start",
+  "border-inline-end",
+  "border-block",
+  "border-block-start",
+  "border-block-end",
+  "column-rule",
+  "text-decoration",
+]);
+
+export const isColorProperty = (prop: string): boolean => {
+  const normalized = prop.trim().toLowerCase();
+  if (normalized.startsWith("--")) {
+    return true;
+  }
+  const clean = normalized.replace(/^-(?:webkit|moz|ms|o)-/, "");
+  if (clean.includes("color") || clean.includes("background")) {
+    return true;
+  }
+  return COLOR_PROPERTIES.has(clean);
+};
+
 const compileSelectorMapToRules = (
   selectorMap: Map<string, SelectorEntry>,
   prefix: string,
@@ -116,11 +149,14 @@ const compileSelectorMapToRules = (
       if (lightVal !== undefined && darkVal !== undefined) {
         if (lightVal === darkVal) {
           standardDecls.push(`${prop}: ${lightVal} !important;`);
-        } else {
+        } else if (isColorProperty(prop)) {
           standardDecls.push(
             `${prop}: light-dark(${lightVal}, ${darkVal}) !important;`,
           );
           needsColorScheme = true;
+        } else {
+          standardDecls.push(`${prop}: ${lightVal} !important;`);
+          darkDecls.push(`${prop}: ${darkVal} !important;`);
         }
       } else if (lightVal !== undefined) {
         standardDecls.push(`${prop}: ${lightVal} !important;`);
@@ -200,6 +236,149 @@ const extractDomainsFromSection = (section: StylusSection): string[] => {
   return Array.from(domains);
 };
 
+interface CssTreeParserContext {
+  tokenStart: number;
+  tokenType: number;
+  tokenIndex: number;
+  eof: boolean;
+  createList: () => csstree.List<csstree.CssNode>;
+  eat: (tokenType: number) => void;
+  next: () => void;
+  lookupType: (offset: number) => number;
+  getLocation: (start: number, end: number) => csstree.CssLocation | undefined;
+  parseWithFallback: (
+    consumer: () => csstree.CssNode,
+    fallback: () => csstree.CssNode,
+  ) => csstree.CssNode;
+  Atrule: (isStyleBlock: boolean) => csstree.CssNode;
+  Rule: () => csstree.CssNode;
+  Declaration: () => csstree.CssNode;
+  Raw: (consumer: unknown, isRaw: boolean) => csstree.CssNode;
+  consumeUntilSemicolonIncluded: unknown;
+}
+
+const isRuleAhead = (parser: CssTreeParserContext): boolean => {
+  let parenDepth = 0;
+  let bracketDepth = 0;
+  for (let offset = 0; offset <= 5000; offset++) {
+    const type = parser.lookupType(offset);
+    if (
+      type === 0 ||
+      type === csstree.tokenTypes.EOF ||
+      type === csstree.tokenTypes.RightCurlyBracket
+    ) {
+      return false;
+    }
+    if (type === csstree.tokenTypes.LeftParenthesis) {
+      parenDepth++;
+    } else if (type === csstree.tokenTypes.RightParenthesis) {
+      if (parenDepth > 0) parenDepth--;
+    } else if (type === csstree.tokenTypes.LeftSquareBracket) {
+      bracketDepth++;
+    } else if (type === csstree.tokenTypes.RightSquareBracket) {
+      if (bracketDepth > 0) bracketDepth--;
+    } else if (parenDepth === 0 && bracketDepth === 0) {
+      if (type === csstree.tokenTypes.Semicolon) {
+        return false;
+      }
+      if (type === csstree.tokenTypes.LeftCurlyBracket) {
+        return true;
+      }
+    }
+  }
+  return false;
+};
+
+const customTree = csstree.fork({
+  node: {
+    Block: {
+      parse(
+        this: CssTreeParserContext,
+        isStyleBlock: boolean,
+      ): csstree.CssNode {
+        const {
+          LeftCurlyBracket,
+          RightCurlyBracket,
+          WhiteSpace,
+          Comment,
+          AtKeyword,
+          Semicolon,
+        } = csstree.tokenTypes;
+
+        const start = this.tokenStart;
+        const children = this.createList();
+
+        this.eat(LeftCurlyBracket);
+
+        scan: while (!this.eof) {
+          switch (this.tokenType) {
+            case RightCurlyBracket:
+              break scan;
+
+            case WhiteSpace:
+            case Comment:
+              this.next();
+              break;
+
+            case AtKeyword:
+              children.push(
+                this.parseWithFallback(
+                  () => this.Atrule(isStyleBlock),
+                  () => this.Raw(null, true),
+                ),
+              );
+              break;
+
+            default:
+              if (isStyleBlock) {
+                if (isRuleAhead(this)) {
+                  children.push(
+                    this.parseWithFallback(
+                      () => this.Rule(),
+                      () => this.Raw(null, true),
+                    ),
+                  );
+                } else {
+                  if (this.tokenType === Semicolon) {
+                    children.push(
+                      this.Raw(this.consumeUntilSemicolonIncluded, true),
+                    );
+                  } else {
+                    const node = this.parseWithFallback(
+                      () => this.Declaration(),
+                      () => this.Raw(this.consumeUntilSemicolonIncluded, true),
+                    );
+                    if (this.tokenType === Semicolon) {
+                      this.next();
+                    }
+                    children.push(node);
+                  }
+                }
+              } else {
+                children.push(
+                  this.parseWithFallback(
+                    () => this.Rule(),
+                    () => this.Raw(null, true),
+                  ),
+                );
+              }
+          }
+        }
+
+        if (!this.eof) {
+          this.eat(RightCurlyBracket);
+        }
+
+        return {
+          type: "Block",
+          loc: this.getLocation(start, this.tokenStart),
+          children,
+        };
+      },
+    },
+  },
+});
+
 export const parseStylusSection = (
   css: string,
   domains?: string[],
@@ -223,7 +402,7 @@ export const parseStylusSection = (
     };
   }
 
-  const ast = csstree.parse(css, {
+  const ast = customTree.parse(css, {
     positions: true,
     parseAtrulePrelude: true,
     parseRulePrelude: true,
@@ -264,11 +443,13 @@ export const parseStylusSection = (
     raw: string;
   }[] = [];
 
-  csstree.walk(ast, {
+  customTree.walk(ast, {
     enter(node: csstree.CssNode) {
       if (node.type === "Atrule") {
         if (node.name === "media") {
-          const rawPrelude = node.prelude ? csstree.generate(node.prelude) : "";
+          const rawPrelude = node.prelude
+            ? customTree.generate(node.prelude)
+            : "";
           const preludeStr = rawPrelude.toLowerCase();
           const isDark = /prefers-color-scheme\s*:\s*dark/.test(preludeStr);
           const isLight = /prefers-color-scheme\s*:\s*light/.test(preludeStr);
@@ -301,7 +482,7 @@ export const parseStylusSection = (
           node.prelude.children.forEach((child: csstree.CssNode) => {
             const raw = child.loc
               ? css.slice(child.loc.start.offset, child.loc.end.offset)
-              : csstree.generate(child);
+              : customTree.generate(child);
             const str = raw
               .replace(/\/\*[\s\S]*?\*\//g, "")
               .trim()
@@ -316,7 +497,7 @@ export const parseStylusSection = (
                 node.prelude.loc.start.offset,
                 node.prelude.loc.end.offset,
               )
-            : csstree.generate(node.prelude);
+            : customTree.generate(node.prelude);
           const str = raw
             .replace(/\/\*[\s\S]*?\*\//g, "")
             .trim()
@@ -343,7 +524,7 @@ export const parseStylusSection = (
         const prop = node.property.trim();
         const rawVal = node.value.loc
           ? css.slice(node.value.loc.start.offset, node.value.loc.end.offset)
-          : csstree.generate(node.value);
+          : customTree.generate(node.value);
         const val = rawVal
           .replace(/\/\*[\s\S]*?\*\//g, "")
           .replace(/\s*!important\s*$/i, "")
