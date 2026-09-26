@@ -9,12 +9,12 @@ A serverless, pure client-side one-way compiler converting Stylus export JSON in
 1. **Unidirectional Compilation Pipeline**
    - Stylus JSON export is the sole Single Source of Truth (SSOT).
    - Strictly one-way conversion: Stylus JSON compiles directly to uBOL JSON configuration backups.
-   - Zero intermediate `.css` file persistence on disk; all AST parsing and transformations run in-memory via PostCSS.
+   - Zero intermediate `.css` file persistence on disk; all AST parsing and transformations run in-memory via `css-tree` (with a custom parser fork supporting CSS nesting) and `@gorhill/ubo-core`.
    - Generates separated Desktop and Mobile configurations as well as a complete unified configuration.
 
 2. **Pure Static Client-Side Interface (`index.html`)**
    - Clean, intuitive centered card interface for uploading `stylus.json` via file selection or drag-and-drop.
-   - Instant in-browser AST transformation and validation using PostCSS and `@gorhill/ubo-core` parser logic.
+   - Instant in-browser AST transformation and validation using `css-tree` and `@gorhill/ubo-core` parser logic.
    - Real-time conversion statistics display:
      - **Target Domains**: Unique hostnames targeted by the rules.
      - **Hide Rules**: Pure cosmetic hide selectors (`display: none`).
@@ -62,10 +62,21 @@ export type UbolConfig = z.infer<typeof UbolConfigSchema>;
   - Declarations containing only `display: none` compile directly into `customFilters`.
 - **Style Injection Rules**:
   - General CSS declarations compile into `sandboxFilters` with enforced `!important`.
-- **Media Query Elimination**:
-  - Color scheme media queries (`@media (prefers-color-scheme: dark)`) are merged at AST level into modern CSS `light-dark(lightVal, darkVal)` with `color-scheme: light dark !important;` enforced at root.
-  - CSS `filter` properties under `@media (prefers-color-scheme: dark)` are compiled into `:matches-media((prefers-color-scheme: dark))` rules.
-  - Pointer media queries (`@media (pointer: coarse)` / `@media (pointer: fine)`) and style titles (`ubo style desktop` / `ubo style mobile`) designate mobile vs desktop scope.
+  - Serialized canonically via `formatStyleDeclarations` without trailing semicolons or redundant whitespace.
+- **Modern `light-dark()` Color Scheme Synthesis**:
+  - Color scheme media queries (`@media (prefers-color-scheme: dark)`) for color properties (`color`, `background*`, `border*`, `outline*`, shadows, SVG `fill`/`stroke`, etc.) and color-bearing CSS variables are synthesized into modern CSS `light-dark(lightVal, darkVal) !important`.
+  - Automatically injects `:root:style(color-scheme: light dark !important)` whenever `light-dark()` is synthesized.
+- **Conditional Media Fallback (`:matches-media`)**:
+  - Non-color properties (e.g. `opacity`, `font-size`) and CSS variables with non-color values under dark media queries cleanly fall back to `:matches-media((prefers-color-scheme: dark)):style(...)` rules.
+  - CSS `filter` properties under dark media queries compile into `:matches-media((prefers-color-scheme: dark)):style(...)` rules.
+  - Generic responsive media queries (e.g. `@media (max-width: 600px)`) compile into standard uBO `:matches-media(...)` rules.
+- **Platform & Device Scoping**:
+  - Pointer media queries (`@media (pointer: coarse)` / `@media (pointer: fine)`) and style titles (`ubo style desktop` / `ubo style mobile`) designate desktop vs. mobile configuration scope in a single pass.
+- **CSS Native Nesting Resolution**:
+  - CSS native nested rules (using `&` parent references or descendant rules) are automatically resolved and flattened to top-level compound selectors during AST traversal.
+- **Selector Normalization & Robust Splitting**:
+  - Normalizes legacy single-colon pseudo-elements (`:before`, `:after`, `:first-letter`, `:first-line`, `:placeholder`) to modern standard double-colon syntax (`::before`, `::after`, etc.).
+  - Safely splits comma-separated selector lists without breaking internal commas in pseudo-classes like `:is(...)`, `:not(...)`, or data URLs, emitting individual `:style(...)` rules.
 
 ### 3. Repository Structure
 
@@ -79,21 +90,21 @@ export type UbolConfig = z.infer<typeof UbolConfigSchema>;
 │   ├── core/
 │   │   ├── converter.ts       # AST parsing and selector normalization helpers
 │   │   ├── migrator/          # Modular Stylus migration engine
-│   │   │   ├── ast-walker.ts       # CSS AST traversal & declaration collection
-│   │   │   ├── color-detector.ts   # CSS color property & value detection
-│   │   │   ├── formatter.ts        # Style declaration serialization
-│   │   │   ├── rule-synthesizer.ts # Rule compilation & light-dark pairing
+│   │   │   ├── ast-walker.ts       # css-tree AST traversal, CSS nesting resolution & declaration collection
+│   │   │   ├── color-detector.ts   # High-precision CSS color property & value sniffer
+│   │   │   ├── formatter.ts        # Canonical :style(...) declaration serializer
+│   │   │   ├── rule-synthesizer.ts # Rule compilation, light-dark pairing & :matches-media fallback
 │   │   │   └── types.ts            # Migrator domain types & interfaces
-│   │   ├── schema.ts          # Zod validation schema
+│   │   ├── schema.ts          # Zod validation schema and round-trip filter conversion helpers
 │   │   └── stylus-migrator.ts # Stylus migration pipeline facade
 │   ├── types/
 │   │   └── ubo-core.d.ts      # TypeScript definitions for @gorhill/ubo-core
 │   ├── main.ts                # Client-side converter controller & stats computation
-│   └── style.css              # Converter interface styling
+│   └── style.css              # Minimalist converter interface styling
 ├── tests/
 │   ├── converter.test.ts      # Parser and selector unit tests
 │   ├── main.test.ts           # Client-side stats & validation unit tests
-│   ├── stylus-migrator.test.ts# Stylus migration unit tests
+│   ├── stylus-migrator.test.ts# Stylus migration, nesting, and styling unit tests
 │   └── e2e/
 │       └── converter.spec.ts  # Playwright E2E integration tests
 ├── index.html                 # Static web entry point
