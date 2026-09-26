@@ -46,8 +46,17 @@ Examples:
     }
   }
 
-  const inputArg = filteredArgs[0];
-  const outputArg = filteredArgs[1];
+  let inputArg = filteredArgs[0];
+  let outputArg = filteredArgs[1];
+
+  if (!inputArg && process.stdin.isTTY) {
+    const defaultInput = path.resolve(process.cwd(), "stylus.json");
+    if (fs.existsSync(defaultInput)) {
+      inputArg = "stylus.json";
+      outputArg ??= "ubol-config.json";
+    }
+  }
+
   let inputContent = "";
 
   if (!inputArg) {

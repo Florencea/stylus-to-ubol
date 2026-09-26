@@ -137,7 +137,7 @@ const matchesDomain = (domainPart: string, targetDomain: string): boolean => {
 
   return positiveTokens.some((token) => {
     const pos = token.toLowerCase();
-    return target === pos || target.endsWith(`.${pos}`);
+    return pos === "*" || target === pos || target.endsWith(`.${pos}`);
   });
 };
 

@@ -13,6 +13,7 @@ export const UbolConfigSchema = z
       })
       .optional(),
     customFilters: z.array(z.tuple([z.string(), z.array(z.string())])),
+    sandboxFilters: z.array(z.string()).optional(),
   })
   .loose();
 
@@ -54,6 +55,14 @@ export const ubolConfigToFilterText = (config: UbolConfig): string => {
       }
     }
   }
+  if (Array.isArray(config.sandboxFilters)) {
+    for (const rule of config.sandboxFilters) {
+      const trimmed = rule.trim();
+      if (trimmed.length > 0) {
+        lines.push(trimmed);
+      }
+    }
+  }
   return lines.join("\n");
 };
 
@@ -62,6 +71,7 @@ export const filterTextToUbolConfig = (
   existingConfig?: Partial<UbolConfig> | Record<string, unknown>,
 ): UbolConfig => {
   const map = new Map<string, Set<string>>();
+  const sandboxSet = new Set<string>();
 
   // 1. If existingConfig already has customFilters, initialize map with them
   // to ensure existing custom filters are preserved.
@@ -89,6 +99,21 @@ export const filterTextToUbolConfig = (
     }
   }
 
+  // 1b. If existingConfig already has sandboxFilters, preserve them
+  if (
+    existingConfig &&
+    "sandboxFilters" in existingConfig &&
+    Array.isArray(existingConfig.sandboxFilters)
+  ) {
+    for (const item of existingConfig.sandboxFilters) {
+      const trimmed =
+        typeof item === "string" ? item.trim() : String(item).trim();
+      if (trimmed.length > 0) {
+        sandboxSet.add(trimmed);
+      }
+    }
+  }
+
   // 2. Parse new filter text
   const lines = filters.split("\n");
   for (const rawLine of lines) {
@@ -103,21 +128,31 @@ export const filterTextToUbolConfig = (
     const domainPart = line.slice(0, hashIdx).trim();
     const rest = line.slice(hashIdx + 2).trim();
 
-    // Pure cosmetic hide rules only for uBOL native customFilters
-    if (rest.includes(":style(")) continue;
+    if (rest.length === 0) continue;
 
+    const rawDomains =
+      domainPart.length > 0 ? domainPart.split(",").map((d) => d.trim()) : [];
     const domains =
-      domainPart.length > 0 ? domainPart.split(",").map((d) => d.trim()) : [""];
-    const subSelectors = splitSelectorList(rest);
+      rawDomains.length > 0 && rawDomains.some((d) => d.length > 0)
+        ? rawDomains.filter((d) => d.length > 0)
+        : ["*"];
 
-    for (const d of domains) {
-      if (d.length === 0) continue;
-      const set = map.get(d) ?? new Set<string>();
-      map.set(d, set);
-      for (const sel of subSelectors) {
-        const trimmed = sel.trim();
-        if (trimmed.length > 0) {
-          set.add(trimmed);
+    if (rest.includes(":style(")) {
+      // Style injection rules go directly into sandboxFilters
+      for (const d of domains) {
+        sandboxSet.add(`${d}##${rest}`);
+      }
+    } else {
+      // Pure cosmetic hide rules go into customFilters
+      const subSelectors = splitSelectorList(rest);
+      for (const d of domains) {
+        const set = map.get(d) ?? new Set<string>();
+        map.set(d, set);
+        for (const sel of subSelectors) {
+          const trimmed = sel.trim();
+          if (trimmed.length > 0) {
+            set.add(trimmed);
+          }
         }
       }
     }
@@ -136,7 +171,9 @@ export const filterTextToUbolConfig = (
     }
   }
 
-  // 4. Preserve all original configuration settings outside customFilters
+  const sortedSandboxFilters = Array.from(sandboxSet).sort();
+
+  // 4. Preserve all original configuration settings outside customFilters and sandboxFilters
   const baseConfig: Record<string, unknown> = existingConfig ?? {};
   const filteringModes =
     typeof baseConfig.filteringModes === "object" &&
@@ -154,9 +191,10 @@ export const filterTextToUbolConfig = (
     version:
       typeof baseConfig.version === "string"
         ? baseConfig.version
-        : new Date().toISOString().slice(0, 10).replace(/-/g, "."),
+        : "2026.920.1710",
     filteringModes,
     customFilters,
+    sandboxFilters: sortedSandboxFilters,
   };
 
   return UbolConfigSchema.parse(result);

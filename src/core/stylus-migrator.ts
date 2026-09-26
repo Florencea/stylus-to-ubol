@@ -73,8 +73,14 @@ export const parseStylusSection = (
   css: string,
   domains?: string[],
 ): StylusSectionResult => {
-  const domainPrefix = domains && domains.length > 0 ? domains.join(",") : "";
-  const prefix = domainPrefix.length > 0 ? `${domainPrefix}##` : "##";
+  const cleanedDomains = domains
+    ? domains.map((d) => d.trim()).filter((d) => d.length > 0)
+    : [];
+  const hasDomains =
+    cleanedDomains.length > 0 &&
+    !(cleanedDomains.length === 1 && cleanedDomains[0] === "*");
+  const domainPrefix = hasDomains ? cleanedDomains.join(",") : "*";
+  const prefix = `${domainPrefix}##`;
 
   // Process nesting first with postcss-nested
   const processed = postcss([nested()]).process(css, { from: undefined }).root;

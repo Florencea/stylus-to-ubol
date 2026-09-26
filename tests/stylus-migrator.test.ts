@@ -522,4 +522,163 @@ describe("Stylus Migrator", () => {
     expect(domains).toContain("www.elle.com");
     expect(domains).toContain("www.mobile01.com");
   });
+
+  it("splits rules cleanly into customFilters (pure hide) and sandboxFilters (:style injection)", () => {
+    const stylusInput = [
+      {
+        enabled: true,
+        sections: [
+          {
+            code: `
+              .header_pop { display: none !important; }
+              body { font-family: var(--stylus-font-sans-serif) !important; }
+            `,
+            domains: ["books.com.tw"],
+          },
+        ],
+      },
+    ];
+
+    const result = migrateStylusJson(stylusInput);
+    expect(isUbolConfig(result)).toBe(true);
+
+    // Pure hide rule -> customFilters
+    expect(result.customFilters).toEqual([["books.com.tw", [".header_pop"]]]);
+
+    // Style injection rule -> sandboxFilters
+    expect(result.sandboxFilters).toEqual([
+      "books.com.tw##body:style(font-family: var(--stylus-font-sans-serif) !important;)",
+    ]);
+  });
+
+  it("handles global generic rules (empty domains) with *## prefix into customFilters and sandboxFilters", () => {
+    const stylusInput = [
+      {
+        enabled: true,
+        sections: [
+          {
+            code: `
+              .sp-separator { display: none !important; }
+              * { text-rendering: auto !important; }
+            `,
+            // empty domains
+          },
+        ],
+      },
+    ];
+
+    const result = migrateStylusJson(stylusInput);
+    expect(isUbolConfig(result)).toBe(true);
+
+    // Pure hide with empty domains -> domain "*" in customFilters
+    const starCustom = result.customFilters.find(([d]) => d === "*");
+    expect(starCustom).toBeDefined();
+    expect(starCustom?.[1]).toContain(".sp-separator");
+
+    // Style rule with empty domains -> "*##" prefix in sandboxFilters
+    expect(result.sandboxFilters).toContain(
+      "*##*:style(text-rendering: auto !important;)",
+    );
+  });
+
+  it("preserves both customFilters and sandboxFilters from existingConfig during merge", () => {
+    const baseConfig = {
+      version: "2026.920.1710",
+      filteringModes: {
+        none: [],
+        basic: [],
+        optimal: ["all-urls"],
+        complete: [],
+      },
+      customFilters: [["existing.com", [".old-hide"]]] as [string, string[]][],
+      sandboxFilters: [
+        "existing.com##.old-style:style(color: blue !important;)",
+      ],
+    };
+
+    const stylusInput = [
+      {
+        enabled: true,
+        sections: [
+          {
+            code: `
+              .new-hide { display: none !important; }
+              .new-style { font-size: 16px !important; }
+            `,
+            domains: ["new.com"],
+          },
+        ],
+      },
+    ];
+
+    const result = migrateStylusJson(stylusInput, baseConfig);
+
+    expect(result.customFilters).toEqual([
+      ["existing.com", [".old-hide"]],
+      ["new.com", [".new-hide"]],
+    ]);
+
+    expect(result.sandboxFilters).toEqual([
+      "existing.com##.old-style:style(color: blue !important;)",
+      "new.com##.new-style:style(font-size: 16px !important;)",
+    ]);
+  });
+
+  it("migrates stylus.json with full style injection rules (:style) across ithome, pts, and news.ycombinator.com", () => {
+    const stylusFilePath = path.resolve(process.cwd(), "stylus.json");
+    if (!fs.existsSync(stylusFilePath)) return;
+
+    const stylusContent = fs.readFileSync(stylusFilePath, "utf-8");
+    const result = migrateStylusJson(stylusContent);
+
+    expect(isUbolConfig(result)).toBe(true);
+    expect(UbolBackupSchema.parse(result)).toBeDefined();
+
+    // Verify books.com.tw has both pure hide in customFilters and style in sandboxFilters
+    const booksCustom = result.customFilters.find(
+      ([d]) => d === "books.com.tw",
+    );
+    expect(booksCustom).toBeDefined();
+    expect(booksCustom?.[1]).toContain(".header_pop");
+
+    const booksSandbox = result.sandboxFilters?.filter((r) =>
+      r.startsWith("books.com.tw##"),
+    );
+    expect(booksSandbox?.length).toBeGreaterThan(0);
+    expect(booksSandbox).toContain(
+      "books.com.tw##body:style(font-family: var(--stylus-font-sans-serif) !important;)",
+    );
+
+    // Verify www.ithome.com.tw has styles in sandboxFilters (flex layout, margins, etc.)
+    const ithomeRules = result.sandboxFilters?.filter((r) =>
+      r.startsWith("www.ithome.com.tw##"),
+    );
+    expect(ithomeRules?.length).toBeGreaterThan(10);
+    expect(ithomeRules?.some((r) => r.includes("display: flex"))).toBe(true);
+
+    // Verify pts.org.tw has styles in sandboxFilters
+    const ptsRules = result.sandboxFilters?.filter((r) =>
+      r.startsWith("pts.org.tw##"),
+    );
+    expect(ptsRules?.length).toBeGreaterThan(10);
+    expect(ptsRules?.some((r) => r.includes("flex: 0 0 75%"))).toBe(true);
+
+    // Verify news.ycombinator.com has light-dark styles in sandboxFilters
+    const hnRules = result.sandboxFilters?.filter((r) =>
+      r.startsWith("news.ycombinator.com##"),
+    );
+    expect(hnRules?.length).toBeGreaterThan(10);
+    expect(hnRules?.some((r) => r.includes("light-dark("))).toBe(true);
+
+    // Verify * has both pure hide and style rules
+    const starCustom = result.customFilters.find(([d]) => d === "*");
+    expect(starCustom).toBeDefined();
+    expect(starCustom?.[1]).toContain(".sp-separator");
+
+    const starSandbox = result.sandboxFilters?.filter((r) =>
+      r.startsWith("*##"),
+    );
+    expect(starSandbox?.length).toBeGreaterThan(0);
+    expect(starSandbox?.some((r) => r.includes(":root:style("))).toBe(true);
+  });
 });
