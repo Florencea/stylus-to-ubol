@@ -323,8 +323,10 @@ export const generateUserscriptBundle = (
       this.platform = platform;
       this.callbacks = callbacks;
       this.render();
-      this.hideArea.value = hideText;
-      this.styleArea.value = styleText;
+      this.scopedHide = { global: hideText || '', desktop: '', mobile: '' };
+      this.scopedStyle = { global: styleText || '', desktop: '', mobile: '' };
+      this.hideArea.value = this.scopedHide.global;
+      this.styleArea.value = this.scopedStyle.global;
     }
 
     updateDiagnostics(items) {
@@ -384,6 +386,16 @@ export const generateUserscriptBundle = (
             color: #8b949e; cursor: pointer; font-size: 12px; font-weight: 500;
           }
           .tab-btn.active { color: #58a6ff; border-bottom-color: #58a6ff; font-weight: 600; }
+          .scope-bar {
+            display: flex; align-items: center; padding: 6px 16px; background: #161b22;
+            border-bottom: 1px solid #30363d; gap: 8px;
+          }
+          .scope-btn {
+            padding: 3px 8px; font-size: 11px; border-radius: 4px; border: 1px solid #30363d;
+            background: #21262d; color: #8b949e; cursor: pointer; transition: all 0.15s ease;
+          }
+          .scope-btn:hover { color: #c9d1d9; border-color: #58a6ff; }
+          .scope-btn.active { background: #1f6feb; color: #fff; border-color: #58a6ff; font-weight: 600; }
           .content { padding: 12px 16px; flex: 1; overflow-y: auto; }
           .pane { display: none; flex-direction: column; gap: 8px; }
           .pane.active { display: flex; }
@@ -415,6 +427,14 @@ export const generateUserscriptBundle = (
             <button class="tab-btn active" data-tab="hide">Hide Selectors</button>
             <button class="tab-btn" data-tab="style">Style Injection</button>
             <button class="tab-btn" data-tab="diag">Dead Code Diagnostics</button>
+          </div>
+          <div class="scope-bar">
+            <span style="font-size:11px;color:#8b949e;margin-right:6px;">Rule Scope:</span>
+            <div style="display:flex;gap:4px;" role="radiogroup" aria-label="Rule Scope">
+              <button type="button" class="scope-btn active" data-scope="global">Global</button>
+              <button type="button" class="scope-btn" data-scope="desktop">Desktop-only</button>
+              <button type="button" class="scope-btn" data-scope="mobile">Mobile-only</button>
+            </div>
           </div>
           <div class="content">
             <div class="pane active" id="pane-hide">
@@ -450,8 +470,32 @@ export const generateUserscriptBundle = (
       this.styleArea = this.shadowRoot.getElementById('style-text');
       this.diagContainer = this.shadowRoot.getElementById('diag-list');
 
-      this.hideArea.oninput = () => this.callbacks.onHideChange(this.hideArea.value);
-      this.styleArea.oninput = () => this.callbacks.onStyleChange(this.styleArea.value);
+      this.activeScope = 'global';
+      this.scopedHide = { global: '', desktop: '', mobile: '' };
+      this.scopedStyle = { global: '', desktop: '', mobile: '' };
+
+      this.hideArea.value = '';
+      this.styleArea.value = '';
+
+      this.hideArea.oninput = () => {
+        this.scopedHide[this.activeScope] = this.hideArea.value;
+        this.callbacks.onHideChange(this.hideArea.value, this.activeScope);
+      };
+      this.styleArea.oninput = () => {
+        this.scopedStyle[this.activeScope] = this.styleArea.value;
+        this.callbacks.onStyleChange(this.styleArea.value, this.activeScope);
+      };
+
+      const scopeBtns = this.shadowRoot.querySelectorAll('.scope-btn');
+      scopeBtns.forEach(btn => {
+        btn.onclick = () => {
+          this.activeScope = btn.dataset.scope;
+          scopeBtns.forEach(b => b.classList.toggle('active', b.dataset.scope === this.activeScope));
+          this.hideArea.value = this.scopedHide[this.activeScope];
+          this.styleArea.value = this.scopedStyle[this.activeScope];
+          if (this.callbacks.onScopeChange) this.callbacks.onScopeChange(this.activeScope);
+        };
+      });
 
       const tabs = this.shadowRoot.querySelectorAll('.tab-btn');
       const panes = this.shadowRoot.querySelectorAll('.pane');
@@ -503,30 +547,71 @@ export const generateUserscriptBundle = (
 
   let currentHide = hideList.join(', ');
   let currentStyle = styleList.join('\\n\\n');
+  let scopedHide = { global: currentHide, desktop: '', mobile: '' };
+  let scopedStyle = { global: currentStyle, desktop: '', mobile: '' };
 
   function applyStyles() {
+    const activeHideSels = [
+      scopedHide.global,
+      platform === 'mobile' ? scopedHide.mobile : scopedHide.desktop
+    ].filter(s => s && s.trim().length > 0).join(', ');
+
     const parts = [];
-    const cleanHide = splitSelectorList(currentHide, true).join(', ');
+    const cleanHide = splitSelectorList(activeHideSels, true).join(', ');
     if (cleanHide) parts.push(cleanHide + ' {\\n  display: none !important;\\n}');
-    if (currentStyle.trim()) parts.push(currentStyle.trim());
+
+    const activeStyleBlks = [
+      scopedStyle.global,
+      platform === 'mobile' ? scopedStyle.mobile : scopedStyle.desktop
+    ].filter(s => s && s.trim().length > 0).join('\\n\\n');
+
+    if (activeStyleBlks.trim()) parts.push(activeStyleBlks.trim());
     styleEl.textContent = parts.join('\\n\\n');
-    if (modalEl) modalEl.updateDiagnostics(diagnoseDeadCode(currentHide, currentStyle));
+    if (modalEl) modalEl.updateDiagnostics(diagnoseDeadCode(activeHideSels, activeStyleBlks));
   }
 
   const modalEl = document.createElement('ubol-workbench');
   modalEl.init(targetDomain, platform, currentHide, currentStyle, {
-    onHideChange: (text) => { currentHide = text; applyStyles(); },
-    onStyleChange: (text) => { currentStyle = text; applyStyles(); },
-    onRescan: () => { modalEl.updateDiagnostics(diagnoseDeadCode(currentHide, currentStyle)); },
+    onHideChange: (text, scope) => {
+      const s = scope || 'global';
+      scopedHide[s] = text;
+      if (s === 'global') currentHide = text;
+      applyStyles();
+    },
+    onStyleChange: (text, scope) => {
+      const s = scope || 'global';
+      scopedStyle[s] = text;
+      if (s === 'global') currentStyle = text;
+      applyStyles();
+    },
+    onRescan: () => {
+      const activeHideSels = [
+        scopedHide.global,
+        platform === 'mobile' ? scopedHide.mobile : scopedHide.desktop
+      ].filter(s => s && s.trim().length > 0).join(', ');
+      const activeStyleBlks = [
+        scopedStyle.global,
+        platform === 'mobile' ? scopedStyle.mobile : scopedStyle.desktop
+      ].filter(s => s && s.trim().length > 0).join('\\n\\n');
+      modalEl.updateDiagnostics(diagnoseDeadCode(activeHideSels, activeStyleBlks));
+    },
     onExport: () => {
-      const cleanHide = splitSelectorList(currentHide, true).sort();
+      const activeHide = [
+        scopedHide.global,
+        platform === 'mobile' ? scopedHide.mobile : scopedHide.desktop
+      ].filter(s => s && s.trim().length > 0).join(', ');
+      const cleanHide = splitSelectorList(activeHide, true).sort();
+      const activeStyle = [
+        scopedStyle.global,
+        platform === 'mobile' ? scopedStyle.mobile : scopedStyle.desktop
+      ].filter(s => s && s.trim().length > 0).join('\\n\\n');
       let exportConfig;
       if (initialBackup && typeof initialBackup === 'object' && Array.isArray(initialBackup.customFilters)) {
         const otherFilters = initialBackup.customFilters.filter(([domain]) => domain !== targetDomain);
         const updatedFilters = cleanHide.length > 0 ? [...otherFilters, [targetDomain, cleanHide]] : otherFilters;
         updatedFilters.sort(([a], [b]) => a.localeCompare(b));
 
-        const styleRules = compileCssToUbolRules(currentStyle, targetDomain).filter(r => r.includes(':style('));
+        const styleRules = compileCssToUbolRules(activeStyle, targetDomain).filter(r => r.includes(':style('));
         const otherSandbox = Array.isArray(initialBackup.sandboxFilters)
           ? initialBackup.sandboxFilters.filter(r => {
               const h = r.indexOf('##');

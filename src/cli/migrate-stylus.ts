@@ -1,7 +1,10 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as process from "node:process";
-import { migrateStylusJson } from "../core/stylus-migrator.ts";
+import {
+  migrateStylusJson,
+  migrateStylusJsonDual,
+} from "../core/stylus-migrator.ts";
 
 export const runMigrateStylusCli = (
   argv: string[] = process.argv.slice(2),
@@ -15,13 +18,16 @@ Arguments:
   [output-file]  Path to output uBOL backup JSON file (optional, stdout if omitted)
 
 Options:
+  --dual, --split      Split output into ubol-config-desktop.json and ubol-config-mobile.json
+  --target <platform>  Target specific platform: "desktop" or "mobile"
   -c, --config <file>  Existing uBOL JSON config to preserve non-customFilters settings and merge into
   --no-config          Do not auto-detect or load existing ubol-config.json
   -h, --help           Show this help message
 
 Examples:
+  npm run migrate:stylus -- stylus-export.json --dual
   npm run migrate:stylus -- stylus-export.json ubol-config.json
-  npm run migrate:stylus -- ubol-config-1.json ubol-config.json
+  npm run migrate:stylus -- stylus-export.json --target mobile
   npm run migrate:stylus -- stylus-export.json --config ubol-config.json
   cat stylus-export.json | npm run migrate:stylus --
 `);
@@ -29,6 +35,8 @@ Examples:
   }
 
   let configPath: string | undefined;
+  let targetPlatform: "desktop" | "mobile" | undefined;
+  const isDual = argv.includes("--dual") || argv.includes("--split");
   const noConfig = argv.includes("--no-config");
   const filteredArgs: string[] = [];
 
@@ -41,7 +49,23 @@ Examples:
       configPath = arg.slice(9);
     } else if (arg?.startsWith("--base=")) {
       configPath = arg.slice(7);
-    } else if (arg !== undefined && arg !== "--no-config") {
+    } else if (arg === "--target" && argv[i + 1]) {
+      const val = argv[i + 1];
+      if (val === "desktop" || val === "mobile") {
+        targetPlatform = val;
+      }
+      i++;
+    } else if (arg?.startsWith("--target=")) {
+      const val = arg.slice(9);
+      if (val === "desktop" || val === "mobile") {
+        targetPlatform = val;
+      }
+    } else if (
+      arg !== undefined &&
+      arg !== "--no-config" &&
+      arg !== "--dual" &&
+      arg !== "--split"
+    ) {
       filteredArgs.push(arg);
     }
   }
@@ -53,7 +77,9 @@ Examples:
     const defaultInput = path.resolve(process.cwd(), "stylus.json");
     if (fs.existsSync(defaultInput)) {
       inputArg = "stylus.json";
-      outputArg ??= "ubol-config.json";
+      if (!isDual) {
+        outputArg ??= "ubol-config.json";
+      }
     }
   }
 
@@ -64,7 +90,7 @@ Examples:
       inputContent = fs.readFileSync(0, "utf-8");
     } else {
       console.error(
-        "Error: Missing input file.\nUsage: npm run migrate:stylus -- <input-file> [output-file]",
+        "Error: Missing input file.\nUsage: npm run migrate:stylus -- <input-file> [output-file] [options]",
       );
       process.exit(1);
     }
@@ -84,7 +110,7 @@ Examples:
     ? path.resolve(process.cwd(), configPath)
     : undefined;
 
-  if (!resolvedConfigPath && outputArg && !noConfig) {
+  if (!resolvedConfigPath && outputArg && !noConfig && !isDual) {
     const outputPath = path.resolve(process.cwd(), outputArg);
     if (fs.existsSync(outputPath)) {
       resolvedConfigPath = outputPath;
@@ -101,15 +127,53 @@ Examples:
   }
 
   try {
-    const result = migrateStylusJson(inputContent, existingConfig);
-    const jsonOutput = JSON.stringify(result, null, 2);
+    if (isDual) {
+      const result = migrateStylusJsonDual(inputContent, existingConfig);
+      let desktopOutName = "ubol-config-desktop.json";
+      let mobileOutName = "ubol-config-mobile.json";
 
-    if (outputArg) {
-      const outputPath = path.resolve(process.cwd(), outputArg);
-      fs.writeFileSync(outputPath, jsonOutput + "\n", "utf-8");
-      console.log(`Successfully migrated Stylus backup to ${outputArg}`);
+      if (outputArg) {
+        if (outputArg.endsWith(".json")) {
+          desktopOutName = outputArg.replace(/\.json$/, "-desktop.json");
+          mobileOutName = outputArg.replace(/\.json$/, "-mobile.json");
+        } else {
+          desktopOutName = path.join(outputArg, "ubol-config-desktop.json");
+          mobileOutName = path.join(outputArg, "ubol-config-mobile.json");
+        }
+      }
+
+      const desktopPath = path.resolve(process.cwd(), desktopOutName);
+      const mobilePath = path.resolve(process.cwd(), mobileOutName);
+
+      fs.writeFileSync(
+        desktopPath,
+        JSON.stringify(result.desktop, null, 2) + "\n",
+        "utf-8",
+      );
+      fs.writeFileSync(
+        mobilePath,
+        JSON.stringify(result.mobile, null, 2) + "\n",
+        "utf-8",
+      );
+
+      console.log(
+        `Successfully migrated Stylus backup to ${desktopOutName} and ${mobileOutName}`,
+      );
     } else {
-      process.stdout.write(jsonOutput + "\n");
+      const result = migrateStylusJson(
+        inputContent,
+        existingConfig,
+        targetPlatform ? { target: targetPlatform } : undefined,
+      );
+      const jsonOutput = JSON.stringify(result, null, 2);
+
+      if (outputArg) {
+        const outputPath = path.resolve(process.cwd(), outputArg);
+        fs.writeFileSync(outputPath, jsonOutput + "\n", "utf-8");
+        console.log(`Successfully migrated Stylus backup to ${outputArg}`);
+      } else {
+        process.stdout.write(jsonOutput + "\n");
+      }
     }
   } catch (err) {
     console.error(

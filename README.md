@@ -7,26 +7,30 @@ A serverless, pure frontend custom style management and debugging workbench usin
 ## Core Deliverables
 
 1. **Static Hub (`index.html`)**
-   - Minimalist centered card interface for importing uBOL backup JSON files directly in the browser conforming to `UbolBackupSchema`.
-   - Analyzes filter rules to extract target domains and dynamically provides a one-click Userscript installation link via `blob:` URL with exact `@match` directives.
+   - Minimalist centered card interface for importing single or multiple uBOL backup JSON files directly in the browser conforming to `UbolBackupSchema`.
+   - Multi-config support: import desktop and mobile configurations concurrently with side-by-side card inspection, platform badge indicators (`Desktop`, `Mobile`, `Global`), individual removal, and combined rule statistics.
+   - Analyzes filter rules across all loaded configurations to extract target domains and dynamically provides a one-click Userscript installation link via `blob:` URL with exact `@match` directives.
    - Built-in error alert area with detailed debug info copying for agent troubleshooting when invalid configurations are imported.
 
 2. **Stylus Migration CLI (`npm run migrate:stylus --`)**
    - Standalone command-line migration utility converting Stylus export JSON into modern uBOL rules using PostCSS AST.
    - Automatically splits rules into `customFilters` (pure `display: none` rules) and `sandboxFilters` (`:style(...)` rules).
+   - **Dual Configuration Export (`--dual` / `--split`)**: Splits migration into two distinct SSOT files (`ubol-config-desktop.json` and `ubol-config-mobile.json`) based on Stylus style section names (`ubo style desktop` / `ubo style mobile`) and CSS pointer media queries (`@media (pointer: coarse)` vs `@media (pointer: fine)`).
+   - **Targeted Output (`--target <desktop|mobile>`)**: Filters rules to export exclusively for desktop or mobile environments.
    - Translates global/generic rules (empty domains or `*`) to `*##` rules across `customFilters` and `sandboxFilters`.
    - Merges `@media (prefers-color-scheme: dark)` into modern CSS `light-dark()` with `color-scheme: light dark !important;`.
    - Automatically falls back to `stylus.json` input and `ubol-config.json` output when executed in interactive terminal without arguments.
 
 3. **In-Page Userscript Client (`.user.js` / Web Component)**
    - Built with pure native Web Components (`customElements.define('ubol-workbench', ...)`), reactive state management, and open Shadow DOM with zero runtime UI framework dependencies.
+   - **Rule Scope Selector**: Toggle between **Global**, **Desktop-only**, and **Mobile-only** rule scopes directly from the workbench toolbar.
    - Three integrated panels:
      - **Hide Selectors**: Real-time cosmetic hide rule editing.
      - **Style Injection**: Declarative CSS property injection.
      - **Dead Code Diagnostics**: Live DOM querying to highlight active vs dead selectors (`0 matches`).
    - Live hot-swap preview: textarea inputs trigger immediate CSS recompilation and update `<style id="ubol-workbench-injected">` in `document.head`.
    - Device perception: monitors screen width (`matchMedia('(max-width: 768px)')`) to toggle between Desktop and Mobile platform rules.
-   - Export: compiles working rules into standard uBOL JSON backup format conforming to `UbolBackupSchema`.
+   - Export: compiles working rules into standard uBOL JSON backup format conforming to `UbolBackupSchema`, or dual desktop/mobile configs.
 
 ## Architecture & Specifications
 
@@ -162,13 +166,31 @@ npm run build
 npm run preview
 ```
 
-## Upcoming Roadmap: Desktop vs Mobile Dual-Configuration
+## Desktop vs Mobile Dual-Configuration Architecture
 
-In Stylus, rulesets such as `ubo style desktop` and `ubo style mobile` utilize `@media (pointer: coarse)` to differentiate desktop and mobile environments. The following enhancements are planned for upcoming iterations:
+In Stylus, rulesets such as `ubo style desktop` and `ubo style mobile` utilize `@media (pointer: coarse)` and `@media (pointer: fine)` to differentiate touch/mobile and pointer/desktop environments. This dual-configuration system is fully integrated across the pipeline:
 
-1. **Dual Configuration Export**:
-   - Split migration output into two distinct SSOT files: `ubol-config-desktop.json` and `ubol-config-mobile.json`.
+1. **Dual Configuration Export (`--dual` / `--split`)**:
+   - The CLI migrator splits Stylus exports into two distinct SSOT backup files:
+     - `ubol-config-desktop.json`: Contains generic global rules + desktop-targeted rules.
+     - `ubol-config-mobile.json`: Contains generic global rules + mobile-targeted rules.
+   - Pointer media queries (`@media (pointer: coarse)` -> Mobile, `@media (pointer: fine)` -> Desktop) and style section titles are automatically classified.
+   - Command usage:
+     ```bash
+     # Split into ubol-config-desktop.json and ubol-config-mobile.json
+     npm run migrate:stylus -- stylus.json --dual
+
+     # Target a single platform exclusively
+     npm run migrate:stylus -- stylus.json --target desktop
+     npm run migrate:stylus -- stylus.json --target mobile
+     ```
+
 2. **Multi-Config Hub UI**:
-   - Enhance the static Hub (`index.html`) to accept multiple uBOL JSON files concurrently, enabling side-by-side or combined management.
+   - Static Hub (`index.html`) accepts multiple uBOL backup JSON files concurrently via file picker or drag-and-drop.
+   - Automatically detects platform scope based on filename and rules, rendering side-by-side cards with `Desktop`, `Mobile`, or `Global` badges.
+   - Computes combined rule metrics and generates a unified Userscript with complete `@match` domains across all loaded files.
+
 3. **Userscript Scope Selector**:
-   - Expand the in-page `<ubol-workbench>` modal UI with a scope selector allowing users to designate rules as **Global**, **Desktop-only**, or **Mobile-only** directly from the workbench.
+   - The in-page `<ubol-workbench>` modal UI features a top-level **Rule Scope** bar (**Global**, **Desktop-only**, **Mobile-only**).
+   - Rules can be authored per scope with independent text areas and live DOM application.
+   - uBO preprocessor directives (`!#if env_mobile` / `!#if !env_mobile` / `!#endif`) are supported for bidirectional importing and exporting.

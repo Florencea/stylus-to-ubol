@@ -14,6 +14,7 @@ import {
 import {
   UbolWorkbenchModal,
   type DeadCodeItem,
+  type RuleScope,
   type WorkbenchModalCallbacks,
 } from "./shadow-modal.ts";
 
@@ -142,12 +143,35 @@ export interface WorkbenchClientOptions {
 export class UbolWorkbenchClient {
   public domain: string;
   public platform: Platform;
+  public currentScope: RuleScope = "global";
   public injectedStyleEl: HTMLStyleElement;
   public modalEl: UbolWorkbenchModal | null = null;
   public initialConfig: UbolConfig | null = null;
 
-  public hideText = "";
-  public styleText = "";
+  public scopedHide: Record<RuleScope, string> = {
+    global: "",
+    desktop: "",
+    mobile: "",
+  };
+  public scopedStyle: Record<RuleScope, string> = {
+    global: "",
+    desktop: "",
+    mobile: "",
+  };
+
+  get hideText(): string {
+    return this.scopedHide[this.currentScope];
+  }
+  set hideText(val: string) {
+    this.scopedHide[this.currentScope] = val;
+  }
+
+  get styleText(): string {
+    return this.scopedStyle[this.currentScope];
+  }
+  set styleText(val: string) {
+    this.scopedStyle[this.currentScope] = val;
+  }
 
   constructor(options?: WorkbenchClientOptions) {
     this.domain =
@@ -186,8 +210,76 @@ export class UbolWorkbenchClient {
   }
 
   public loadFilters(filters: string): void {
-    const rawCss = parseUbolToCss(filters, this.domain, this.platform);
-    this.updateFromCompiledCss(rawCss);
+    const lines = filters.split("\n");
+    const globalLines: string[] = [];
+    const desktopLines: string[] = [];
+    const mobileLines: string[] = [];
+    const ifStack: ("mobile" | "desktop" | "other")[] = [];
+
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (line.startsWith("!#if")) {
+        const expr = line.slice(4).replace(/[()]/g, "").trim();
+        if (expr === "env_mobile") ifStack.push("mobile");
+        else if (expr === "!env_mobile") ifStack.push("desktop");
+        else ifStack.push("other");
+        continue;
+      }
+      if (line.startsWith("!#else")) {
+        const top = ifStack.pop();
+        if (top === "mobile") ifStack.push("desktop");
+        else if (top === "desktop") ifStack.push("mobile");
+        else ifStack.push("other");
+        continue;
+      }
+      if (line.startsWith("!#endif")) {
+        ifStack.pop();
+        continue;
+      }
+
+      const activeEnv = ifStack[ifStack.length - 1];
+      if (activeEnv === "mobile") mobileLines.push(rawLine);
+      else if (activeEnv === "desktop") desktopLines.push(rawLine);
+      else globalLines.push(rawLine);
+    }
+
+    const parseSectionToTexts = (
+      sectionLines: string[],
+      plat: Platform,
+    ): { hide: string; style: string } => {
+      const rawCss = parseUbolToCss(sectionLines.join("\n"), this.domain, plat);
+      const hideSels: string[] = [];
+      const styleBlks: string[] = [];
+      for (const blk of rawCss.split("\n\n")) {
+        const trimmed = blk.trim();
+        if (!trimmed) continue;
+        const openBr = trimmed.indexOf("{");
+        const closeBr = trimmed.lastIndexOf("}");
+        if (openBr === -1 || closeBr === -1) continue;
+        const sel = trimmed.slice(0, openBr).trim();
+        const body = trimmed.slice(openBr + 1, closeBr).trim();
+        if (body === "display: none !important;") hideSels.push(sel);
+        else styleBlks.push(trimmed);
+      }
+      return { hide: hideSels.join(", "), style: styleBlks.join("\n\n") };
+    };
+
+    const globalParsed = parseSectionToTexts(globalLines, this.platform);
+    this.scopedHide.global = globalParsed.hide;
+    this.scopedStyle.global = globalParsed.style;
+
+    if (desktopLines.length > 0) {
+      const dParsed = parseSectionToTexts(desktopLines, "desktop");
+      this.scopedHide.desktop = dParsed.hide;
+      this.scopedStyle.desktop = dParsed.style;
+    }
+    if (mobileLines.length > 0) {
+      const mParsed = parseSectionToTexts(mobileLines, "mobile");
+      this.scopedHide.mobile = mParsed.hide;
+      this.scopedStyle.mobile = mParsed.style;
+    }
+
+    this.recalculateAndApply();
   }
 
   public updateFromCompiledCss(css: string): void {
@@ -213,15 +305,24 @@ export class UbolWorkbenchClient {
       }
     }
 
-    this.hideText = hideSelectors.join(", ");
-    this.styleText = styleBlocks.join("\n\n");
+    this.scopedHide[this.currentScope] = hideSelectors.join(", ");
+    this.scopedStyle[this.currentScope] = styleBlocks.join("\n\n");
     this.recalculateAndApply();
   }
 
   public recalculateAndApply(): void {
     const cssParts: string[] = [];
 
-    const cleanHide = splitSelectorList(this.hideText, {
+    const activeHideSels = [
+      this.scopedHide.global,
+      this.platform === "mobile"
+        ? this.scopedHide.mobile
+        : this.scopedHide.desktop,
+    ]
+      .filter((s) => s.trim().length > 0)
+      .join(", ");
+
+    const cleanHide = splitSelectorList(activeHideSels, {
       splitOnNewlines: true,
     }).join(", ");
 
@@ -229,8 +330,17 @@ export class UbolWorkbenchClient {
       cssParts.push(`${cleanHide} {\n  display: none !important;\n}`);
     }
 
-    if (this.styleText.trim().length > 0) {
-      cssParts.push(this.styleText.trim());
+    const activeStyleBlks = [
+      this.scopedStyle.global,
+      this.platform === "mobile"
+        ? this.scopedStyle.mobile
+        : this.scopedStyle.desktop,
+    ]
+      .filter((s) => s.trim().length > 0)
+      .join("\n\n");
+
+    if (activeStyleBlks.trim().length > 0) {
+      cssParts.push(activeStyleBlks.trim());
     }
 
     const combinedCss = cssParts.join("\n\n");
@@ -241,31 +351,79 @@ export class UbolWorkbenchClient {
 
   public refreshDiagnostics(): void {
     if (typeof document === "undefined" || !this.modalEl) return;
-    const items = diagnoseDeadCode(this.hideText, this.styleText, document);
+    const activeHide = [
+      this.scopedHide.global,
+      this.platform === "mobile"
+        ? this.scopedHide.mobile
+        : this.scopedHide.desktop,
+    ]
+      .filter((s) => s.trim().length > 0)
+      .join(", ");
+
+    const activeStyle = [
+      this.scopedStyle.global,
+      this.platform === "mobile"
+        ? this.scopedStyle.mobile
+        : this.scopedStyle.desktop,
+    ]
+      .filter((s) => s.trim().length > 0)
+      .join("\n\n");
+
+    const items = diagnoseDeadCode(activeHide, activeStyle, document);
     this.modalEl.updateDiagnostics(items);
   }
 
   public exportBackup(): UbolBackup {
-    const cssParts: string[] = [];
+    const compileScope = (hideText: string, styleText: string): string[] => {
+      const parts: string[] = [];
+      const cleanHide = splitSelectorList(hideText, {
+        splitOnNewlines: true,
+      }).join(", ");
 
-    const cleanHide = splitSelectorList(this.hideText, {
-      splitOnNewlines: true,
-    }).join(", ");
+      if (cleanHide.length > 0) {
+        parts.push(`${cleanHide} {\n  display: none !important;\n}`);
+      }
 
-    if (cleanHide.length > 0) {
-      cssParts.push(`${cleanHide} {\n  display: none !important;\n}`);
+      if (styleText.trim().length > 0) {
+        parts.push(styleText.trim());
+      }
+
+      return parts.length > 0
+        ? compileCssToUbolRules(parts.join("\n\n"), this.domain)
+        : [];
+    };
+
+    const globalRules = compileScope(
+      this.scopedHide.global,
+      this.scopedStyle.global,
+    );
+    const desktopRules = compileScope(
+      this.scopedHide.desktop,
+      this.scopedStyle.desktop,
+    );
+    const mobileRules = compileScope(
+      this.scopedHide.mobile,
+      this.scopedStyle.mobile,
+    );
+
+    const filterLines: string[] = [];
+    if (globalRules.length > 0) {
+      filterLines.push(...globalRules);
     }
-
-    if (this.styleText.trim().length > 0) {
-      cssParts.push(this.styleText.trim());
+    if (desktopRules.length > 0) {
+      filterLines.push("!#if !env_mobile");
+      filterLines.push(...desktopRules);
+      filterLines.push("!#endif");
     }
-
-    const fullCss = cssParts.join("\n\n");
-    const rules = compileCssToUbolRules(fullCss, this.domain);
+    if (mobileRules.length > 0) {
+      filterLines.push("!#if env_mobile");
+      filterLines.push(...mobileRules);
+      filterLines.push("!#endif");
+    }
 
     const backup: UbolBackup = {
       userResources: {
-        userFilters: rules.join("\n"),
+        userFilters: filterLines.join("\n"),
       },
       schemaVersion: 1,
     };
@@ -273,10 +431,69 @@ export class UbolWorkbenchClient {
     return UbolBackupSchema.parse(backup);
   }
 
+  public exportDualConfig(): { desktop: UbolConfig; mobile: UbolConfig } {
+    const compileToConfig = (
+      hideText: string,
+      styleText: string,
+    ): UbolConfig => {
+      const cleanHide = splitSelectorList(hideText, {
+        splitOnNewlines: true,
+      }).sort();
+      let sandboxRules: string[] = [];
+      if (styleText.trim().length > 0) {
+        const compiled = compileCssToUbolRules(styleText, this.domain);
+        sandboxRules = compiled.filter((r) => r.includes(":style("));
+      }
+      return filterTextToUbolConfig(
+        [...cleanHide.map((s) => `${this.domain}##${s}`), ...sandboxRules].join(
+          "\n",
+        ),
+        this.initialConfig ?? undefined,
+      );
+    };
+
+    const desktopHide = [this.scopedHide.global, this.scopedHide.desktop]
+      .filter((s) => s.trim().length > 0)
+      .join(", ");
+    const desktopStyle = [this.scopedStyle.global, this.scopedStyle.desktop]
+      .filter((s) => s.trim().length > 0)
+      .join("\n\n");
+
+    const mobileHide = [this.scopedHide.global, this.scopedHide.mobile]
+      .filter((s) => s.trim().length > 0)
+      .join(", ");
+    const mobileStyle = [this.scopedStyle.global, this.scopedStyle.mobile]
+      .filter((s) => s.trim().length > 0)
+      .join("\n\n");
+
+    return {
+      desktop: compileToConfig(desktopHide, desktopStyle),
+      mobile: compileToConfig(mobileHide, mobileStyle),
+    };
+  }
+
   public exportUbolConfig(): UbolConfig {
-    const cleanHide = splitSelectorList(this.hideText, {
+    const activeHideSels = [
+      this.scopedHide.global,
+      this.platform === "mobile"
+        ? this.scopedHide.mobile
+        : this.scopedHide.desktop,
+    ]
+      .filter((s) => s.trim().length > 0)
+      .join(", ");
+
+    const cleanHide = splitSelectorList(activeHideSels, {
       splitOnNewlines: true,
     }).sort();
+
+    const activeStyleText = [
+      this.scopedStyle.global,
+      this.platform === "mobile"
+        ? this.scopedStyle.mobile
+        : this.scopedStyle.desktop,
+    ]
+      .filter((s) => s.trim().length > 0)
+      .join("\n\n");
 
     if (this.initialConfig) {
       const otherFilters = this.initialConfig.customFilters.filter(
@@ -289,8 +506,8 @@ export class UbolWorkbenchClient {
       updatedFilters.sort(([a], [b]) => a.localeCompare(b));
 
       let sandboxRules: string[] = [];
-      if (this.styleText.trim().length > 0) {
-        const compiled = compileCssToUbolRules(this.styleText, this.domain);
+      if (activeStyleText.trim().length > 0) {
+        const compiled = compileCssToUbolRules(activeStyleText, this.domain);
         sandboxRules = compiled.filter((r) => r.includes(":style("));
       }
 
@@ -325,13 +542,18 @@ export class UbolWorkbenchClient {
     ) as UbolWorkbenchModal;
 
     const callbacks: WorkbenchModalCallbacks = {
-      onHideChange: (text) => {
-        this.hideText = text;
+      onHideChange: (text, scope) => {
+        const targetScope = scope ?? this.currentScope;
+        this.scopedHide[targetScope] = text;
         this.recalculateAndApply();
       },
-      onStyleChange: (text) => {
-        this.styleText = text;
+      onStyleChange: (text, scope) => {
+        const targetScope = scope ?? this.currentScope;
+        this.scopedStyle[targetScope] = text;
         this.recalculateAndApply();
+      },
+      onScopeChange: (scope) => {
+        this.currentScope = scope;
       },
       onExport: () => {
         const config = this.exportUbolConfig();
@@ -357,9 +579,20 @@ export class UbolWorkbenchClient {
     this.modalEl.init(
       this.domain,
       this.platform,
-      this.hideText,
-      this.styleText,
+      this.scopedHide.global,
+      this.scopedStyle.global,
       callbacks,
+    );
+
+    this.modalEl.setScopeContent(
+      "desktop",
+      this.scopedHide.desktop,
+      this.scopedStyle.desktop,
+    );
+    this.modalEl.setScopeContent(
+      "mobile",
+      this.scopedHide.mobile,
+      this.scopedStyle.mobile,
     );
 
     container.appendChild(this.modalEl);

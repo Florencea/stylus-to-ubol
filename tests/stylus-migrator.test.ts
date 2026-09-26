@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { AstFilterParser } from "@gorhill/ubo-core/js/static-filtering-parser.js";
 import {
   migrateStylusJson,
+  migrateStylusJsonDual,
   parseStylusSection,
 } from "../src/core/stylus-migrator.ts";
 import { runMigrateStylusCli } from "../src/cli/migrate-stylus.ts";
@@ -806,5 +807,184 @@ describe("Stylus Migrator", () => {
     for (const r of result.sandboxFilters ?? []) {
       validateRuleWithUbo(r);
     }
+  });
+
+  it("splits rules into desktop and mobile scopes via pointer media queries", () => {
+    const css = `
+      .global-banner {
+        display: none !important;
+      }
+      .desktop-btn {
+        font-size: 14px;
+      }
+      @media (pointer: coarse) {
+        .mobile-ad {
+          display: none !important;
+        }
+        .touch-btn {
+          font-size: 18px;
+        }
+      }
+    `;
+
+    const parsed = parseStylusSection(css, ["example.com"]);
+    expect(parsed.scopedCosmeticRules?.global).toEqual([
+      "example.com##.global-banner",
+    ]);
+    expect(parsed.scopedCosmeticRules?.mobile).toEqual([
+      "example.com##.mobile-ad",
+    ]);
+    expect(parsed.scopedStyleRules?.global).toContain(
+      "example.com##.desktop-btn:style(font-size: 14px !important;)",
+    );
+    expect(parsed.scopedStyleRules?.mobile).toContain(
+      "example.com##.touch-btn:style(font-size: 18px !important;)",
+    );
+  });
+
+  it("migrates Stylus dual styles (desktop and mobile) into distinct SSOT configs", () => {
+    const stylusDualJson = JSON.stringify([
+      {
+        name: "ubo style desktop",
+        enabled: true,
+        sections: [
+          {
+            domains: ["site.com"],
+            code: `
+              .desktop-sidebar { display: none !important; }
+              body { font-size: 15px; }
+            `,
+          },
+        ],
+      },
+      {
+        name: "ubo style mobile",
+        enabled: true,
+        sections: [
+          {
+            domains: ["site.com"],
+            code: `
+              @media (pointer: coarse) {
+                .mobile-drawer { display: none !important; }
+                body { font-size: 18px; }
+              }
+            `,
+          },
+        ],
+      },
+    ]);
+
+    const dual = migrateStylusJsonDual(stylusDualJson);
+
+    // Desktop SSOT config
+    expect(dual.desktop.customFilters).toEqual([
+      ["site.com", [".desktop-sidebar"]],
+    ]);
+    expect(dual.desktop.sandboxFilters).toContain(
+      "site.com##body:style(font-size: 15px !important;)",
+    );
+    expect(
+      dual.desktop.customFilters.some(([, sels]) =>
+        sels.includes(".mobile-drawer"),
+      ),
+    ).toBe(false);
+
+    // Mobile SSOT config
+    expect(dual.mobile.customFilters).toEqual([
+      ["site.com", [".mobile-drawer"]],
+    ]);
+    expect(dual.mobile.sandboxFilters).toContain(
+      "site.com##body:style(font-size: 18px !important;)",
+    );
+    expect(
+      dual.mobile.customFilters.some(([, sels]) =>
+        sels.includes(".desktop-sidebar"),
+      ),
+    ).toBe(false);
+
+    // Validate rules with uBO parser
+    for (const [, sels] of dual.desktop.customFilters) {
+      for (const sel of sels) validateRuleWithUbo(`site.com##${sel}`);
+    }
+    for (const r of dual.desktop.sandboxFilters ?? []) validateRuleWithUbo(r);
+    for (const [, sels] of dual.mobile.customFilters) {
+      for (const sel of sels) validateRuleWithUbo(`site.com##${sel}`);
+    }
+    for (const r of dual.mobile.sandboxFilters ?? []) validateRuleWithUbo(r);
+  });
+
+  it("runs CLI migrate-stylus with --dual producing desktop and mobile SSOT files", () => {
+    const tmpDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "ubol-dual-cli-test-"),
+    );
+    const inputPath = path.join(tmpDir, "stylus.json");
+    const stylusDualContent = JSON.stringify([
+      {
+        name: "ubo style desktop",
+        enabled: true,
+        sections: [
+          {
+            domains: ["example.com"],
+            code: ".d-hide { display: none; }",
+          },
+        ],
+      },
+      {
+        name: "ubo style mobile",
+        enabled: true,
+        sections: [
+          {
+            domains: ["example.com"],
+            code: "@media (pointer: coarse) { .m-hide { display: none; } }",
+          },
+        ],
+      },
+    ]);
+    fs.writeFileSync(inputPath, stylusDualContent, "utf-8");
+
+    const desktopOutput = path.join(tmpDir, "ubol-config-desktop.json");
+    const mobileOutput = path.join(tmpDir, "ubol-config-mobile.json");
+
+    runMigrateStylusCli([
+      inputPath,
+      path.join(tmpDir, "ubol-config.json"),
+      "--dual",
+    ]);
+
+    expect(fs.existsSync(desktopOutput)).toBe(true);
+    expect(fs.existsSync(mobileOutput)).toBe(true);
+
+    const desktopParsed = JSON.parse(
+      fs.readFileSync(desktopOutput, "utf-8"),
+    ) as UbolConfig;
+    const mobileParsed = JSON.parse(
+      fs.readFileSync(mobileOutput, "utf-8"),
+    ) as UbolConfig;
+
+    expect(desktopParsed.customFilters).toEqual([["example.com", [".d-hide"]]]);
+    expect(mobileParsed.customFilters).toEqual([["example.com", [".m-hide"]]]);
+
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("migrates project stylus.json in dual mode successfully without uBO validation errors", () => {
+    const projectStylusPath = path.resolve(process.cwd(), "stylus.json");
+    if (!fs.existsSync(projectStylusPath)) return;
+
+    const content = fs.readFileSync(projectStylusPath, "utf-8");
+    const dual = migrateStylusJsonDual(content);
+
+    expect(dual.desktop.customFilters.length).toBeGreaterThan(0);
+    expect(dual.mobile.customFilters.length).toBeGreaterThan(0);
+
+    for (const [domain, sels] of dual.desktop.customFilters) {
+      for (const sel of sels) validateRuleWithUbo(`${domain}##${sel}`);
+    }
+    for (const r of dual.desktop.sandboxFilters ?? []) validateRuleWithUbo(r);
+
+    for (const [domain, sels] of dual.mobile.customFilters) {
+      for (const sel of sels) validateRuleWithUbo(`${domain}##${sel}`);
+    }
+    for (const r of dual.mobile.sandboxFilters ?? []) validateRuleWithUbo(r);
   });
 });

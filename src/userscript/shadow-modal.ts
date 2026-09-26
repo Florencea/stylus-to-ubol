@@ -1,3 +1,5 @@
+export type RuleScope = "global" | "desktop" | "mobile";
+
 export interface DeadCodeItem {
   selector: string;
   type: "hide" | "style";
@@ -5,8 +7,9 @@ export interface DeadCodeItem {
 }
 
 export interface WorkbenchModalCallbacks {
-  onHideChange: (hideText: string) => void;
-  onStyleChange: (styleText: string) => void;
+  onHideChange: (hideText: string, scope?: RuleScope) => void;
+  onStyleChange: (styleText: string, scope?: RuleScope) => void;
+  onScopeChange?: (newScope: RuleScope) => void;
   onExport: () => void;
   onRescanDiagnostics: () => void;
   onPlatformToggle?: (newPlatform: "desktop" | "mobile") => void;
@@ -28,8 +31,20 @@ export class UbolWorkbenchModal extends BaseElement {
   private callbacks: WorkbenchModalCallbacks | null = null;
 
   private currentTab: "hide" | "style" | "diagnostics" = "hide";
+  private currentScope: RuleScope = "global";
   private domain = "example.com";
   private platform: "desktop" | "mobile" = "desktop";
+
+  private scopedHideText: Record<RuleScope, string> = {
+    global: "",
+    desktop: "",
+    mobile: "",
+  };
+  private scopedStyleText: Record<RuleScope, string> = {
+    global: "",
+    desktop: "",
+    mobile: "",
+  };
 
   private hideTextarea: HTMLTextAreaElement | null = null;
   private styleTextarea: HTMLTextAreaElement | null = null;
@@ -57,6 +72,9 @@ export class UbolWorkbenchModal extends BaseElement {
     this.platform = platform;
     this.callbacks = callbacks;
 
+    this.scopedHideText.global = initialHide;
+    this.scopedStyleText.global = initialStyle;
+
     this.render();
 
     if (this.hideTextarea) {
@@ -69,6 +87,37 @@ export class UbolWorkbenchModal extends BaseElement {
 
   public getActiveTab(): "hide" | "style" | "diagnostics" {
     return this.currentTab;
+  }
+
+  public getActiveScope(): RuleScope {
+    return this.currentScope;
+  }
+
+  public switchScope(scope: RuleScope): void {
+    this.currentScope = scope;
+    const scopeBtns =
+      this.shadow.querySelectorAll<HTMLButtonElement>(".scope-btn");
+    scopeBtns.forEach((btn) => {
+      btn.classList.toggle("active", btn.getAttribute("data-scope") === scope);
+    });
+
+    if (this.hideTextarea) {
+      this.hideTextarea.value = this.scopedHideText[scope];
+    }
+    if (this.styleTextarea) {
+      this.styleTextarea.value = this.scopedStyleText[scope];
+    }
+
+    this.callbacks?.onScopeChange?.(scope);
+  }
+
+  public setScopeContent(scope: RuleScope, hide: string, style: string): void {
+    this.scopedHideText[scope] = hide;
+    this.scopedStyleText[scope] = style;
+    if (this.currentScope === scope) {
+      if (this.hideTextarea) this.hideTextarea.value = hide;
+      if (this.styleTextarea) this.styleTextarea.value = style;
+    }
   }
 
   public updatePlatform(platform: "desktop" | "mobile"): void {
@@ -470,6 +519,48 @@ export class UbolWorkbenchModal extends BaseElement {
           color: #8b949e;
           padding: 40px 0;
         }
+        .scope-bar {
+          display: flex;
+          align-items: center;
+          padding: 6px 14px;
+          background: #161b22;
+          border-bottom: 1px solid #30363d;
+          gap: 10px;
+        }
+
+        .scope-label {
+          font-size: 11px;
+          color: #8b949e;
+          font-weight: 500;
+        }
+
+        .scope-group {
+          display: flex;
+          gap: 4px;
+        }
+
+        .scope-btn {
+          padding: 3px 8px;
+          font-size: 11px;
+          border-radius: 4px;
+          border: 1px solid #30363d;
+          background: #21262d;
+          color: #8b949e;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+
+        .scope-btn:hover {
+          color: #c9d1d9;
+          border-color: #58a6ff;
+        }
+
+        .scope-btn.active {
+          background: #1f6feb;
+          color: #ffffff;
+          border-color: #58a6ff;
+          font-weight: 600;
+        }
       </style>
 
       <button class="toggle-btn" id="open-btn">
@@ -494,6 +585,15 @@ export class UbolWorkbenchModal extends BaseElement {
           <button class="tab-btn active" data-tab="hide">Hide Selectors</button>
           <button class="tab-btn" data-tab="style">Style Injection</button>
           <button class="tab-btn" data-tab="diagnostics">Dead Code Diagnostics</button>
+        </div>
+
+        <div class="scope-bar" id="scope-bar">
+          <span class="scope-label">Rule Scope:</span>
+          <div class="scope-group" role="radiogroup" aria-label="Rule Scope">
+            <button type="button" class="scope-btn active" data-scope="global" title="Active on all devices">Global</button>
+            <button type="button" class="scope-btn" data-scope="desktop" title="Active only on desktop">Desktop-only</button>
+            <button type="button" class="scope-btn" data-scope="mobile" title="Active only on mobile">Mobile-only</button>
+          </div>
         </div>
 
         <div class="tab-content">
@@ -546,15 +646,35 @@ export class UbolWorkbenchModal extends BaseElement {
     this.statusEl = this.shadow.querySelector("#status-indicator");
     this.platformBadge = this.shadow.querySelector("#platform-badge");
 
+    const scopeBtns =
+      this.shadow.querySelectorAll<HTMLButtonElement>(".scope-btn");
+    scopeBtns.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const rawScope = btn.getAttribute("data-scope");
+        if (
+          rawScope === "global" ||
+          rawScope === "desktop" ||
+          rawScope === "mobile"
+        ) {
+          this.switchScope(rawScope);
+        }
+      });
+    });
+
     this.hideTextarea?.addEventListener("input", () => {
       if (this.callbacks && this.hideTextarea) {
-        this.callbacks.onHideChange(this.hideTextarea.value);
+        this.scopedHideText[this.currentScope] = this.hideTextarea.value;
+        this.callbacks.onHideChange(this.hideTextarea.value, this.currentScope);
       }
     });
 
     this.styleTextarea?.addEventListener("input", () => {
       if (this.callbacks && this.styleTextarea) {
-        this.callbacks.onStyleChange(this.styleTextarea.value);
+        this.scopedStyleText[this.currentScope] = this.styleTextarea.value;
+        this.callbacks.onStyleChange(
+          this.styleTextarea.value,
+          this.currentScope,
+        );
       }
     });
 

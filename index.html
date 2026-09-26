@@ -33,6 +33,7 @@
               type="file"
               id="ubol-file-input"
               accept=".json,application/json"
+              multiple
               style="display: none"
             />
             <button
@@ -42,7 +43,18 @@
             >
               Import uBOL Configuration
             </button>
-            <span class="drop-hint">or drop .json backup file here</span>
+            <span class="drop-hint">or drop .json backup file(s) here</span>
+          </div>
+
+          <!-- Multi-Config Hub Container (Side-by-Side Management) -->
+          <div class="configs-container" id="configs-container" hidden>
+            <div class="configs-header">
+              <span class="configs-title">Loaded Configurations</span>
+              <button type="button" class="btn-clear" id="btn-clear-configs">
+                Clear All
+              </button>
+            </div>
+            <div class="configs-list" id="configs-list"></div>
           </div>
 
           <!-- (2) Script Install Button -->

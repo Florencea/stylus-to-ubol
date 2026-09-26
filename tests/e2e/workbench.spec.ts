@@ -119,6 +119,72 @@ test.describe("uBOL Workbench Hub E2E", () => {
     await copyDebugBtn.click();
     await expect(copyDebugBtn).toHaveText("Copied Debug Info!");
   });
+
+  test("Multi-config file import renders side-by-side config cards with platform badges and can clear configs", async ({
+    page,
+  }) => {
+    const desktopMock = {
+      filteringModes: {
+        none: [],
+        basic: [],
+        optimal: ["all-urls"],
+        complete: [],
+      },
+      customFilters: [["desktop.example.com", [".desktop-ad"]]],
+      sandboxFilters: [
+        "desktop.example.com##.header:style(color: blue !important;)",
+      ],
+    };
+
+    const mobileMock = {
+      filteringModes: {
+        none: [],
+        basic: [],
+        optimal: ["all-urls"],
+        complete: [],
+      },
+      customFilters: [["mobile.example.com", [".mobile-ad"]]],
+      sandboxFilters: [
+        "mobile.example.com##.header:style(color: red !important;)",
+      ],
+    };
+
+    const fileInput = page.locator("#ubol-file-input");
+    await fileInput.setInputFiles([
+      {
+        name: "ubol-config-desktop.json",
+        mimeType: "application/json",
+        buffer: Buffer.from(JSON.stringify(desktopMock, null, 2)),
+      },
+      {
+        name: "ubol-config-mobile.json",
+        mimeType: "application/json",
+        buffer: Buffer.from(JSON.stringify(mobileMock, null, 2)),
+      },
+    ]);
+
+    // Config cards container should be visible
+    const configsContainer = page.locator("#configs-container");
+    await expect(configsContainer).toBeVisible();
+
+    const configCards = page.locator(".config-card");
+    await expect(configCards).toHaveCount(2);
+
+    // Verify badges
+    await expect(page.locator(".badge-desktop")).toBeVisible();
+    await expect(page.locator(".badge-mobile")).toBeVisible();
+
+    // Verify install button is enabled
+    const installBtn = page.locator("#btn-install-userscript");
+    await expect(installBtn).not.toHaveClass(/disabled/);
+    await expect(installBtn).toHaveAttribute("href", /^blob:/);
+
+    // Clear configs
+    const clearBtn = page.locator("#btn-clear-configs");
+    await clearBtn.click();
+    await expect(configsContainer).toBeHidden();
+    await expect(installBtn).toHaveClass(/disabled/);
+  });
 });
 
 test.describe("In-Page Userscript Runtime E2E", () => {
@@ -186,5 +252,71 @@ test.describe("In-Page Userscript Runtime E2E", () => {
     await closeBtn.click();
     await expect(modal).toBeHidden();
     await expect(openBtn).toBeVisible();
+  });
+
+  test("Userscript scope selector switches between Global, Desktop-only, and Mobile-only scopes independently", async ({
+    page,
+  }) => {
+    await page.setContent(`
+      <!doctype html>
+      <html>
+        <head><title>Scope Test Page</title></head>
+        <body>
+          <div id="target-box">Content</div>
+        </body>
+      </html>
+    `);
+
+    const scriptContent = generateUserscriptBundle(GENERIC_UBOL_BACKUP);
+    await page.addScriptTag({ content: scriptContent });
+
+    const workbenchEl = page.locator("ubol-workbench");
+    await expect(workbenchEl).toBeAttached();
+
+    const openBtn = workbenchEl.locator("#open-btn");
+    await openBtn.click();
+
+    // Scope buttons are present
+    const globalBtn = workbenchEl.locator(
+      'button.scope-btn[data-scope="global"]',
+    );
+    const desktopBtn = workbenchEl.locator(
+      'button.scope-btn[data-scope="desktop"]',
+    );
+    const mobileBtn = workbenchEl.locator(
+      'button.scope-btn[data-scope="mobile"]',
+    );
+
+    await expect(globalBtn).toHaveClass(/active/);
+    await expect(desktopBtn).toBeVisible();
+    await expect(mobileBtn).toBeVisible();
+
+    const hideTextarea = workbenchEl.locator("#hide-text");
+    await expect(hideTextarea).not.toBeEmpty();
+
+    // Switch to desktop scope
+    await desktopBtn.click();
+    await expect(desktopBtn).toHaveClass(/active/);
+    await expect(globalBtn).not.toHaveClass(/active/);
+    await expect(hideTextarea).toHaveValue("");
+
+    // Enter desktop-specific rule
+    await hideTextarea.fill(".desktop-only-hide");
+
+    // Switch to mobile scope
+    await mobileBtn.click();
+    await expect(mobileBtn).toHaveClass(/active/);
+    await expect(hideTextarea).toHaveValue("");
+
+    // Enter mobile-specific rule
+    await hideTextarea.fill(".mobile-only-hide");
+
+    // Switch back to desktop and verify rule is preserved
+    await desktopBtn.click();
+    await expect(hideTextarea).toHaveValue(".desktop-only-hide");
+
+    // Switch back to mobile and verify rule is preserved
+    await mobileBtn.click();
+    await expect(hideTextarea).toHaveValue(".mobile-only-hide");
   });
 });

@@ -203,4 +203,109 @@ describe("Workbench Controller", () => {
       "other.com##.card:style(color: red !important;)",
     ]);
   });
+
+  it("manages independent scoped rules for global, desktop, and mobile", () => {
+    const client = new UbolWorkbenchClient({ domain: "example.com" });
+
+    // Global scope (default)
+    expect(client.currentScope).toBe("global");
+    client.hideText = ".global-ad";
+    client.styleText = ".global-card { color: red !important; }";
+
+    // Desktop scope
+    client.currentScope = "desktop";
+    expect(client.hideText).toBe("");
+    client.hideText = ".desktop-sidebar";
+    client.styleText = ".desktop-layout { display: flex !important; }";
+
+    // Mobile scope
+    client.currentScope = "mobile";
+    expect(client.hideText).toBe("");
+    client.hideText = ".mobile-drawer";
+    client.styleText = ".mobile-btn { width: 100% !important; }";
+
+    // Switch back to global and verify preserved values
+    client.currentScope = "global";
+    expect(client.hideText).toBe(".global-ad");
+    expect(client.styleText).toBe(".global-card { color: red !important; }");
+
+    // Switch to desktop and verify preserved values
+    client.currentScope = "desktop";
+    expect(client.hideText).toBe(".desktop-sidebar");
+    expect(client.styleText).toBe(
+      ".desktop-layout { display: flex !important; }",
+    );
+  });
+
+  it("correctly parses preprocessor directives into scoped filters", () => {
+    const client = new UbolWorkbenchClient({ domain: "example.com" });
+    const filters = [
+      "example.com##.global-ad",
+      "!#if !env_mobile",
+      "example.com##.desktop-nav",
+      "example.com##.desktop-pane:style(display: grid !important;)",
+      "!#endif",
+      "!#if env_mobile",
+      "example.com##.mobile-nav",
+      "example.com##.mobile-pane:style(display: block !important;)",
+      "!#endif",
+    ].join("\n");
+
+    client.loadFilters(filters);
+
+    expect(client.scopedHide.global).toBe(".global-ad");
+    expect(client.scopedHide.desktop).toBe(".desktop-nav");
+    expect(client.scopedStyle.desktop).toContain(".desktop-pane");
+    expect(client.scopedHide.mobile).toBe(".mobile-nav");
+    expect(client.scopedStyle.mobile).toContain(".mobile-pane");
+  });
+
+  it("exports dual config with combined global and scope-specific rules", () => {
+    const client = new UbolWorkbenchClient({ domain: "example.com" });
+
+    client.scopedHide.global = ".global-banner";
+    client.scopedStyle.global = ".header { background: black !important; }";
+    client.scopedHide.desktop = ".desktop-ad";
+    client.scopedStyle.desktop = ".sidebar { width: 250px !important; }";
+    client.scopedHide.mobile = ".mobile-ad";
+    client.scopedStyle.mobile = ".toolbar { font-size: 14px !important; }";
+
+    const { desktop, mobile } = client.exportDualConfig();
+
+    // Desktop config must include global + desktop rules
+    const desktopHideSelectors = desktop.customFilters.flatMap(
+      ([, sels]) => sels,
+    );
+    expect(desktopHideSelectors).toContain(".global-banner");
+    expect(desktopHideSelectors).toContain(".desktop-ad");
+    expect(desktopHideSelectors).not.toContain(".mobile-ad");
+    expect(desktop.sandboxFilters).toBeDefined();
+    expect(desktop.sandboxFilters?.some((r) => r.includes(".header"))).toBe(
+      true,
+    );
+    expect(desktop.sandboxFilters?.some((r) => r.includes(".sidebar"))).toBe(
+      true,
+    );
+    expect(desktop.sandboxFilters?.some((r) => r.includes(".toolbar"))).toBe(
+      false,
+    );
+
+    // Mobile config must include global + mobile rules
+    const mobileHideSelectors = mobile.customFilters.flatMap(
+      ([, sels]) => sels,
+    );
+    expect(mobileHideSelectors).toContain(".global-banner");
+    expect(mobileHideSelectors).toContain(".mobile-ad");
+    expect(mobileHideSelectors).not.toContain(".desktop-ad");
+    expect(mobile.sandboxFilters).toBeDefined();
+    expect(mobile.sandboxFilters?.some((r) => r.includes(".header"))).toBe(
+      true,
+    );
+    expect(mobile.sandboxFilters?.some((r) => r.includes(".toolbar"))).toBe(
+      true,
+    );
+    expect(mobile.sandboxFilters?.some((r) => r.includes(".sidebar"))).toBe(
+      false,
+    );
+  });
 });
