@@ -13,8 +13,8 @@ Guidelines for AI agents and human contributors working on this repository.
   - Global generic rules (empty domains or `*`) use `*` domain in `customFilters` and `*##` prefix in `sandboxFilters`.
 - **Forbidden `@media` Blocks in uBOL Rules**:
   - Filter rules cannot contain raw `@media { ... }` blocks.
-  - Color scheme media queries (`prefers-color-scheme: dark`) for color properties and color-bearing CSS variables must be parsed at AST level and converted to modern CSS `light-dark(lightVal, darkVal)` with `color-scheme: light dark !important;` injected at root.
-  - Non-color properties (opacity, font-size, layout variables) and CSS `filter` properties under dark mode must fall back to `:matches-media((prefers-color-scheme: dark)):style(...)`.
+  - Color scheme media queries (`prefers-color-scheme: dark` / `prefers-color-scheme: light`) for paired color properties and color-bearing CSS variables must be parsed at AST level and converted to modern CSS `light-dark(lightVal, darkVal)` with `color-scheme: light dark !important;` injected at root.
+  - Non-color properties (opacity, font-size, layout variables), CSS `filter` properties, and scheme-exclusive styles (light-only or dark-only) must fall back to `:matches-media((prefers-color-scheme: light|dark)):style(...)`.
   - Generic responsive media queries (e.g. `max-width`, `min-width`) must compile to `:matches-media(...)` style rules.
   - Platform and device conditions must be classified during migration (via pointer media queries or section naming) or use uBO preprocessor directives (`!#if env_mobile` / `!#endif`).
   - All declarations must enforce `!important`.

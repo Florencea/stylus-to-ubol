@@ -202,6 +202,7 @@ export const walkStylusCss = (
     if (!entry) {
       entry = {
         selector,
+        baseMap: new Map<string, string>(),
         lightMap: new Map<string, string>(),
         darkMap: new Map<string, string>(),
         mediaQueryMap: new Map<string, Map<string, string>>(),
@@ -340,10 +341,15 @@ export const walkStylusCss = (
 
         for (const sel of currentSels) {
           const entry = getOrCreateEntry(sel, activeScope);
+          const isDark = mediaStack.some((m) => m.isDark);
+          const isLight = mediaStack.some((m) => m.isLight);
+
           if (genericConditions.length > 0) {
             let condition = genericConditions.join(" and ");
-            if (mediaStack.some((m) => m.isDark)) {
+            if (isDark) {
               condition = `${condition} and (prefers-color-scheme: dark)`;
+            } else if (isLight) {
+              condition = `${condition} and (prefers-color-scheme: light)`;
             }
             let declMap = entry.mediaQueryMap.get(condition);
             if (!declMap) {
@@ -351,13 +357,12 @@ export const walkStylusCss = (
               entry.mediaQueryMap.set(condition, declMap);
             }
             declMap.set(prop, val);
+          } else if (isDark) {
+            entry.darkMap.set(prop, val);
+          } else if (isLight) {
+            entry.lightMap.set(prop, val);
           } else {
-            const isDark = mediaStack.some((m) => m.isDark);
-            if (isDark) {
-              entry.darkMap.set(prop, val);
-            } else {
-              entry.lightMap.set(prop, val);
-            }
+            entry.baseMap.set(prop, val);
           }
         }
       }

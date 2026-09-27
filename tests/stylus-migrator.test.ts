@@ -678,6 +678,53 @@ describe("Stylus Migrator", () => {
     }
   });
 
+  it("migrates Stylus section containing filter under prefers-color-scheme: light into sandboxFilters with :matches-media", () => {
+    const stylusJson = JSON.stringify([
+      {
+        enabled: true,
+        name: "Light Contrast Filter",
+        sections: [
+          {
+            domains: ["lightsite.com"],
+            code: `
+              img, video {
+                filter: grayscale(0.2);
+              }
+              @media (prefers-color-scheme: light) {
+                img, video {
+                  filter: contrast(1.1) brightness(0.95);
+                  opacity: 0.9;
+                }
+              }
+            `,
+          },
+        ],
+      },
+    ]);
+
+    const result = migrateStylusJson(stylusJson);
+    expect(result.customFilters).toHaveLength(0);
+    expect(result.sandboxFilters).toBeDefined();
+
+    expect(result.sandboxFilters).toContain(
+      "lightsite.com##img:style(filter: grayscale(0.2) !important)",
+    );
+    expect(result.sandboxFilters).toContain(
+      "lightsite.com##video:style(filter: grayscale(0.2) !important)",
+    );
+
+    expect(result.sandboxFilters).toContain(
+      "lightsite.com##img:matches-media((prefers-color-scheme: light)):style(filter: contrast(1.1) brightness(0.95) !important; opacity: 0.9 !important)",
+    );
+    expect(result.sandboxFilters).toContain(
+      "lightsite.com##video:matches-media((prefers-color-scheme: light)):style(filter: contrast(1.1) brightness(0.95) !important; opacity: 0.9 !important)",
+    );
+
+    for (const r of result.sandboxFilters ?? []) {
+      validateRuleWithUbo(r);
+    }
+  });
+
   it("does not truncate :is() selectors with internal commas and emits individual :style rules", () => {
     const stylusJson = JSON.stringify([
       {

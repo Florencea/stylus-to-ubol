@@ -22,6 +22,7 @@ export interface AllUbolConfigs {
 
 export interface SelectorEntry {
   selector: string;
+  baseMap: Map<string, string>;
   lightMap: Map<string, string>;
   darkMap: Map<string, string>;
   mediaQueryMap: Map<string, Map<string, string>>;

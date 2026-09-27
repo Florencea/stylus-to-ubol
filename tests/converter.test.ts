@@ -87,9 +87,16 @@ describe("Converter Core", () => {
         "color: light-dark(#333333, #ffffff) !important;",
       );
       // Same value in both light and dark -> plain value with !important
-      expect(cardRule).toContain("font-size: 14px !important;");
-      // Light-only property
-      expect(cardRule).toContain("border-color: #e0e0e0 !important");
+      expect(cardRule).toContain("font-size: 14px !important");
+      // Light-only property -> :matches-media((prefers-color-scheme: light))
+      const lightCardRule = rules.find((r) =>
+        r.includes(
+          "##.card:matches-media((prefers-color-scheme: light)):style",
+        ),
+      );
+      expect(lightCardRule).toBeDefined();
+      expect(lightCardRule).toContain("border-color: #e0e0e0 !important");
+      expect(cardRule).not.toContain("border-color");
       // Dark-only property -> :matches-media((prefers-color-scheme: dark))
       const darkCardRule = rules.find((r) =>
         r.includes("##.card:matches-media((prefers-color-scheme: dark)):style"),
@@ -275,6 +282,74 @@ describe("Converter Core", () => {
       expect(rules).toEqual([
         "example.com##:root:style(color-scheme: light dark !important)",
         "example.com##img:style(background-color: light-dark(#ffffff, #000000) !important)",
+      ]);
+      for (const r of rules) validateRuleWithUbo(r);
+    });
+
+    it("compiles display: none in light media query into :matches-media((prefers-color-scheme: light)):style(display: none !important)", () => {
+      const css = `
+        @media (prefers-color-scheme: light) {
+          .ad-banner {
+            display: none !important;
+          }
+        }
+      `;
+      const rules = compileCssToUbolRules(css, "example.com");
+      expect(rules).toEqual([
+        "example.com##.ad-banner:matches-media((prefers-color-scheme: light)):style(display: none !important)",
+      ]);
+      for (const r of rules) validateRuleWithUbo(r);
+    });
+
+    it("compiles pure display: none across both light and dark media queries into cosmetic hide rules", () => {
+      const css = `
+        @media (prefers-color-scheme: light) {
+          .ad-banner {
+            display: none;
+          }
+        }
+        @media (prefers-color-scheme: dark) {
+          .ad-banner {
+            display: none;
+          }
+        }
+      `;
+      const rules = compileCssToUbolRules(css, "example.com");
+      expect(rules).toEqual(["example.com##.ad-banner"]);
+      for (const r of rules) validateRuleWithUbo(r);
+    });
+
+    it("compiles light-only styles into :matches-media((prefers-color-scheme: light)):style(...)", () => {
+      const css = `
+        @media (prefers-color-scheme: light) {
+          .notice {
+            background-color: #f9f9f9;
+            opacity: 0.95;
+          }
+        }
+      `;
+      const rules = compileCssToUbolRules(css, "example.com");
+      expect(rules).toEqual([
+        "example.com##.notice:matches-media((prefers-color-scheme: light)):style(background-color: #f9f9f9 !important; opacity: 0.95 !important)",
+      ]);
+      for (const r of rules) validateRuleWithUbo(r);
+    });
+
+    it("compiles base filter and light filter into separate unconditional and :matches-media rules", () => {
+      const css = `
+        img {
+          filter: grayscale(1);
+        }
+        @media (prefers-color-scheme: light) {
+          img {
+            filter: contrast(1.2);
+          }
+        }
+      `;
+      const rules = compileCssToUbolRules(css, "example.com");
+      expect(rules).toEqual([
+        "example.com##img:style(filter: grayscale(1) !important)",
+        "example.com##img:matches-media((prefers-color-scheme: light)):style(filter: contrast(1.2) !important)",
       ]);
       for (const r of rules) validateRuleWithUbo(r);
     });

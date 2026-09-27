@@ -45,54 +45,105 @@ export const compileSelectorMapToRules = (
   let needsColorScheme = false;
 
   for (const entry of selectorMap.values()) {
-    const { selector, lightMap, darkMap, mediaQueryMap } = entry;
-    const allProps = new Set([...lightMap.keys(), ...darkMap.keys()]);
+    const { selector, baseMap, lightMap, darkMap, mediaQueryMap } = entry;
+    const allProps = new Set([
+      ...baseMap.keys(),
+      ...lightMap.keys(),
+      ...darkMap.keys(),
+    ]);
     if (allProps.size === 0 && mediaQueryMap.size === 0) continue;
 
     if (allProps.size > 0) {
       const isPureHide =
         allProps.size === 1 &&
         allProps.has("display") &&
-        (lightMap.get("display") ?? "").toLowerCase() === "none" &&
-        (!darkMap.has("display") ||
-          (darkMap.get("display") ?? "").toLowerCase() === "none");
+        ((baseMap.get("display")?.toLowerCase() === "none" &&
+          (!lightMap.has("display") ||
+            lightMap.get("display")?.toLowerCase() === "none") &&
+          (!darkMap.has("display") ||
+            darkMap.get("display")?.toLowerCase() === "none")) ||
+          (baseMap.size === 0 &&
+            lightMap.get("display")?.toLowerCase() === "none" &&
+            darkMap.get("display")?.toLowerCase() === "none"));
 
       if (isPureHide) {
         cosmeticRules.push(`${prefix}${selector}`);
       } else {
         const standardDecls: [string, string][] = [];
+        const lightDecls: [string, string][] = [];
         const darkDecls: [string, string][] = [];
 
         for (const prop of allProps) {
+          const baseVal = baseMap.get(prop);
           const lightVal = lightMap.get(prop);
           const darkVal = darkMap.get(prop);
 
-          if (lightVal !== undefined && darkVal !== undefined) {
-            if (lightVal === darkVal) {
-              standardDecls.push([prop, `${lightVal} !important`]);
-            } else if (
-              isColorProperty(prop, lightVal) ||
-              isColorProperty(prop, darkVal)
-            ) {
-              standardDecls.push([
-                prop,
-                `light-dark(${lightVal}, ${darkVal}) !important`,
-              ]);
-              needsColorScheme = true;
-            } else {
-              standardDecls.push([prop, `${lightVal} !important`]);
-              darkDecls.push([prop, `${darkVal} !important`]);
-            }
-          } else if (lightVal !== undefined) {
-            standardDecls.push([prop, `${lightVal} !important`]);
-          } else if (darkVal !== undefined) {
+          if (
+            baseVal !== undefined &&
+            lightVal === undefined &&
+            darkVal === undefined
+          ) {
+            standardDecls.push([prop, `${baseVal} !important`]);
+          } else if (
+            lightVal !== undefined &&
+            baseVal === undefined &&
+            darkVal === undefined
+          ) {
+            lightDecls.push([prop, `${lightVal} !important`]);
+          } else if (
+            darkVal !== undefined &&
+            baseVal === undefined &&
+            lightVal === undefined
+          ) {
             darkDecls.push([prop, `${darkVal} !important`]);
+          } else {
+            const effectiveLight = lightVal ?? baseVal;
+            const effectiveDark = darkVal ?? baseVal;
+
+            if (effectiveLight !== undefined && effectiveDark !== undefined) {
+              if (effectiveLight === effectiveDark) {
+                standardDecls.push([prop, `${effectiveLight} !important`]);
+              } else if (
+                isColorProperty(prop, effectiveLight) ||
+                isColorProperty(prop, effectiveDark)
+              ) {
+                standardDecls.push([
+                  prop,
+                  `light-dark(${effectiveLight}, ${effectiveDark}) !important`,
+                ]);
+                needsColorScheme = true;
+              } else {
+                if (baseVal !== undefined) {
+                  standardDecls.push([prop, `${baseVal} !important`]);
+                  if (lightVal !== undefined && lightVal !== baseVal) {
+                    lightDecls.push([prop, `${lightVal} !important`]);
+                  }
+                  if (darkVal !== undefined && darkVal !== baseVal) {
+                    darkDecls.push([prop, `${darkVal} !important`]);
+                  }
+                } else {
+                  if (lightVal !== undefined) {
+                    lightDecls.push([prop, `${lightVal} !important`]);
+                  }
+                  if (darkVal !== undefined) {
+                    darkDecls.push([prop, `${darkVal} !important`]);
+                  }
+                }
+              }
+            }
           }
         }
 
         const formattedStandard = formatStyleDeclarations(standardDecls);
         if (formattedStandard.length > 0) {
           styleRules.push(`${prefix}${selector}:style(${formattedStandard})`);
+        }
+
+        const formattedLight = formatStyleDeclarations(lightDecls);
+        if (formattedLight.length > 0) {
+          styleRules.push(
+            `${prefix}${selector}:matches-media((prefers-color-scheme: light)):style(${formattedLight})`,
+          );
         }
 
         const formattedDark = formatStyleDeclarations(darkDecls);

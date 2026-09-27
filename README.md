@@ -67,11 +67,12 @@ export type UbolConfig = z.infer<typeof UbolConfigSchema>;
   - General CSS declarations compile into `sandboxFilters` with enforced `!important`.
   - Serialized canonically via `formatStyleDeclarations` without trailing semicolons or redundant whitespace.
 - **Modern `light-dark()` Color Scheme Synthesis**:
-  - Color scheme media queries (`@media (prefers-color-scheme: dark)`) for color properties (`color`, `background*`, `border*`, `outline*`, shadows, SVG `fill`/`stroke`, etc.) and color-bearing CSS variables are synthesized into modern CSS `light-dark(lightVal, darkVal) !important`.
+  - Color scheme media queries (`@media (prefers-color-scheme: dark)` / `@media (prefers-color-scheme: light)`) for paired color properties (`color`, `background*`, `border*`, `outline*`, shadows, SVG `fill`/`stroke`, etc.) and color-bearing CSS variables are synthesized into modern CSS `light-dark(lightVal, darkVal) !important`.
   - Automatically injects `:root:style(color-scheme: light dark !important)` whenever `light-dark()` is synthesized.
 - **Conditional Media Fallback (`:matches-media`)**:
-  - Non-color properties (e.g. `opacity`, `font-size`) and CSS variables with non-color values under dark media queries cleanly fall back to `:matches-media((prefers-color-scheme: dark)):style(...)` rules.
-  - CSS `filter` properties under dark media queries compile into `:matches-media((prefers-color-scheme: dark)):style(...)` rules.
+  - Non-color properties (e.g. `opacity`, `font-size`) and CSS variables with non-color values under dark or light media queries cleanly fall back to `:matches-media((prefers-color-scheme: dark))` or `:matches-media((prefers-color-scheme: light))` style rules.
+  - CSS `filter` properties under dark or light media queries compile into `:matches-media(...)` style rules.
+  - Light-only or dark-only properties compile into their corresponding `:matches-media(...)` style rules.
   - Generic responsive media queries (e.g. `@media (max-width: 600px)`) compile into standard uBO `:matches-media(...)` rules.
 - **Platform & Device Scoping**:
   - Pointer media queries (`@media (pointer: coarse)` / `@media (pointer: fine)`) and style titles (`ubo style desktop` / `ubo style mobile`) designate desktop vs. mobile configuration scope in a single pass.
