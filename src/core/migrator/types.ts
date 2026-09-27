@@ -20,12 +20,17 @@ export interface AllUbolConfigs {
   complete: UbolConfig;
 }
 
+export interface PropertyDeclaration {
+  value: string;
+  important: boolean;
+}
+
 export interface SelectorEntry {
   selector: string;
-  baseMap: Map<string, string>;
-  lightMap: Map<string, string>;
-  darkMap: Map<string, string>;
-  mediaQueryMap: Map<string, Map<string, string>>;
+  baseMap: Map<string, PropertyDeclaration>;
+  lightMap: Map<string, PropertyDeclaration>;
+  darkMap: Map<string, PropertyDeclaration>;
+  mediaQueryMap: Map<string, Map<string, PropertyDeclaration>>;
 }
 
 export interface CompiledRules {

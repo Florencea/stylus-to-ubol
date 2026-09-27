@@ -1,5 +1,10 @@
 import * as csstree from "css-tree";
-import type { RuleScope, ScopeMap, SelectorEntry } from "./types.ts";
+import type {
+  PropertyDeclaration,
+  RuleScope,
+  ScopeMap,
+  SelectorEntry,
+} from "./types.ts";
 
 export const normalizeSelector = (selector: string): string => {
   return selector
@@ -202,10 +207,10 @@ export const walkStylusCss = (
     if (!entry) {
       entry = {
         selector,
-        baseMap: new Map<string, string>(),
-        lightMap: new Map<string, string>(),
-        darkMap: new Map<string, string>(),
-        mediaQueryMap: new Map<string, Map<string, string>>(),
+        baseMap: new Map<string, PropertyDeclaration>(),
+        lightMap: new Map<string, PropertyDeclaration>(),
+        darkMap: new Map<string, PropertyDeclaration>(),
+        mediaQueryMap: new Map<string, Map<string, PropertyDeclaration>>(),
       };
       map.set(selector, entry);
     }
@@ -333,11 +338,18 @@ export const walkStylusCss = (
         const rawVal = node.value.loc
           ? css.slice(node.value.loc.start.offset, node.value.loc.end.offset)
           : customTree.generate(node.value);
-        const val = rawVal
-          .replace(/\/\*[\s\S]*?\*\//g, "")
-          .replace(/\s*!important\s*$/i, "")
-          .trim();
+        const stripped = rawVal.replace(/\/\*[\s\S]*?\*\//g, "").trim();
+        const isImportant =
+          Boolean(node.important) ||
+          (typeof node.important === "string" && Boolean(node.important)) ||
+          /\s*!important\s*$/i.test(stripped);
+        const val = stripped.replace(/\s*!important\s*$/i, "").trim();
         if (prop.length === 0 || val.length === 0) return;
+
+        const decl: PropertyDeclaration = {
+          value: val,
+          important: isImportant,
+        };
 
         for (const sel of currentSels) {
           const entry = getOrCreateEntry(sel, activeScope);
@@ -353,16 +365,16 @@ export const walkStylusCss = (
             }
             let declMap = entry.mediaQueryMap.get(condition);
             if (!declMap) {
-              declMap = new Map<string, string>();
+              declMap = new Map<string, PropertyDeclaration>();
               entry.mediaQueryMap.set(condition, declMap);
             }
-            declMap.set(prop, val);
+            declMap.set(prop, decl);
           } else if (isDark) {
-            entry.darkMap.set(prop, val);
+            entry.darkMap.set(prop, decl);
           } else if (isLight) {
-            entry.lightMap.set(prop, val);
+            entry.lightMap.set(prop, decl);
           } else {
-            entry.baseMap.set(prop, val);
+            entry.baseMap.set(prop, decl);
           }
         }
       }

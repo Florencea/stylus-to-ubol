@@ -36,7 +36,7 @@ describe("Converter Core", () => {
       for (const r of rules) validateRuleWithUbo(r);
     });
 
-    it("compiles general CSS rules into :style(...) rules with enforced !important", () => {
+    it("compiles general CSS rules into :style(...) rules preserving original !important state", () => {
       const css = `
         .btn-primary {
           background-color: #007bff;
@@ -45,7 +45,7 @@ describe("Converter Core", () => {
       `;
       const rules = compileCssToUbolRules(css, "example.com");
       expect(rules).toEqual([
-        "example.com##.btn-primary:style(background-color: #007bff !important; border-radius: 4px !important)",
+        "example.com##.btn-primary:style(background-color: #007bff; border-radius: 4px !important)",
       ]);
       for (const r of rules) validateRuleWithUbo(r);
     });
@@ -80,14 +80,10 @@ describe("Converter Core", () => {
       const cardRule = rules.find((r) => r.includes("##.card:style"));
       expect(cardRule).toBeDefined();
       // Different values -> light-dark()
-      expect(cardRule).toContain(
-        "background: light-dark(#ffffff, #1e1e1e) !important;",
-      );
-      expect(cardRule).toContain(
-        "color: light-dark(#333333, #ffffff) !important;",
-      );
-      // Same value in both light and dark -> plain value with !important
-      expect(cardRule).toContain("font-size: 14px !important");
+      expect(cardRule).toContain("background: light-dark(#ffffff, #1e1e1e);");
+      expect(cardRule).toContain("color: light-dark(#333333, #ffffff);");
+      // Same value in both light and dark -> plain value
+      expect(cardRule).toContain("font-size: 14px");
       // Light-only property -> :matches-media((prefers-color-scheme: light))
       const lightCardRule = rules.find((r) =>
         r.includes(
@@ -95,20 +91,20 @@ describe("Converter Core", () => {
         ),
       );
       expect(lightCardRule).toBeDefined();
-      expect(lightCardRule).toContain("border-color: #e0e0e0 !important");
+      expect(lightCardRule).toContain("border-color: #e0e0e0");
       expect(cardRule).not.toContain("border-color");
       // Dark-only property -> :matches-media((prefers-color-scheme: dark))
       const darkCardRule = rules.find((r) =>
         r.includes("##.card:matches-media((prefers-color-scheme: dark)):style"),
       );
       expect(darkCardRule).toBeDefined();
-      expect(darkCardRule).toContain("box-shadow: 0 0 10px #000 !important");
+      expect(darkCardRule).toContain("box-shadow: 0 0 10px #000");
 
       // Root rule should contain color-scheme
       const rootRule = rules.find((r) => r.includes("##:root:style"));
       expect(rootRule).toBeDefined();
       expect(rootRule).toContain("color-scheme: light dark !important;");
-      expect(rootRule).toContain("--header-bg: #fff !important");
+      expect(rootRule).toContain("--header-bg: #fff");
 
       for (const r of rules) validateRuleWithUbo(r);
     });
@@ -132,7 +128,7 @@ describe("Converter Core", () => {
       `;
       const rules = compileCssToUbolRules(css, "example.com");
       expect(rules).toEqual([
-        "example.com##.nav:matches-media((min-width: 768px)):style(display: flex !important)",
+        "example.com##.nav:matches-media((min-width: 768px)):style(display: flex)",
       ]);
       for (const r of rules) validateRuleWithUbo(r);
     });
@@ -151,7 +147,7 @@ describe("Converter Core", () => {
       `;
       const rules = compileCssToUbolRules(css, "example.com");
       expect(rules).toEqual([
-        "example.com##.modal:style(display: none !important; opacity: 0 !important)",
+        "example.com##.modal:style(display: none; opacity: 0)",
       ]);
       for (const r of rules) validateRuleWithUbo(r);
     });
@@ -189,10 +185,10 @@ describe("Converter Core", () => {
       const rules = compileCssToUbolRules(css, "example.com");
       expect(rules).toHaveLength(2);
       expect(rules[0]).toBe(
-        "example.com##body:has(#popup):style(background-color: #ff0000 !important)",
+        "example.com##body:has(#popup):style(background-color: #ff0000)",
       );
       expect(rules[1]).toBe(
-        "example.com##.card::before:style(background-color: #ff0000 !important)",
+        "example.com##.card::before:style(background-color: #ff0000)",
       );
       for (const r of rules) validateRuleWithUbo(r);
     });
@@ -205,11 +201,11 @@ describe("Converter Core", () => {
       `;
       const rules = compileCssToUbolRules(css, "github.com");
       expect(rules).toEqual([
-        "github.com##:is(code, kbd, pre, samp):style(font-family: var(--stylus-font-monospace) !important)",
-        "github.com###read-only-cursor-text-area:style(font-family: var(--stylus-font-monospace) !important)",
-        "github.com##.react-code-text:style(font-family: var(--stylus-font-monospace) !important)",
-        "github.com##.text-mono:style(font-family: var(--stylus-font-monospace) !important)",
-        "github.com##.blob-code-inner:style(font-family: var(--stylus-font-monospace) !important)",
+        "github.com##:is(code, kbd, pre, samp):style(font-family: var(--stylus-font-monospace))",
+        "github.com###read-only-cursor-text-area:style(font-family: var(--stylus-font-monospace))",
+        "github.com##.react-code-text:style(font-family: var(--stylus-font-monospace))",
+        "github.com##.text-mono:style(font-family: var(--stylus-font-monospace))",
+        "github.com##.blob-code-inner:style(font-family: var(--stylus-font-monospace))",
       ]);
       for (const r of rules) validateRuleWithUbo(r);
     });
@@ -226,7 +222,7 @@ describe("Converter Core", () => {
       const rules = compileCssToUbolRules(css, "example.com");
       expect(rules.some((r) => r.includes("light-dark"))).toBe(false);
       expect(rules).toContain(
-        "example.com##img:matches-media((prefers-color-scheme: dark)):style(filter: invert(1) !important; -webkit-filter: invert(1) !important)",
+        "example.com##img:matches-media((prefers-color-scheme: dark)):style(filter: invert(1); -webkit-filter: invert(1))",
       );
       for (const r of rules) validateRuleWithUbo(r);
     });
@@ -241,9 +237,9 @@ describe("Converter Core", () => {
       `;
       const rules = compileCssToUbolRules(css, "example.com");
       expect(rules).toEqual([
-        "example.com##img:matches-media((prefers-color-scheme: dark)):style(filter: invert(1) !important)",
-        "example.com##svg:matches-media((prefers-color-scheme: dark)):style(filter: invert(1) !important)",
-        "example.com##video:matches-media((prefers-color-scheme: dark)):style(filter: invert(1) !important)",
+        "example.com##img:matches-media((prefers-color-scheme: dark)):style(filter: invert(1))",
+        "example.com##svg:matches-media((prefers-color-scheme: dark)):style(filter: invert(1))",
+        "example.com##video:matches-media((prefers-color-scheme: dark)):style(filter: invert(1))",
       ]);
       for (const r of rules) validateRuleWithUbo(r);
     });
@@ -261,8 +257,8 @@ describe("Converter Core", () => {
       `;
       const rules = compileCssToUbolRules(css, "example.com");
       expect(rules).toEqual([
-        "example.com##img:style(filter: grayscale(1) !important)",
-        "example.com##img:matches-media((prefers-color-scheme: dark)):style(filter: invert(1) !important)",
+        "example.com##img:style(filter: grayscale(1))",
+        "example.com##img:matches-media((prefers-color-scheme: dark)):style(filter: invert(1))",
       ]);
       for (const r of rules) validateRuleWithUbo(r);
     });
@@ -281,7 +277,7 @@ describe("Converter Core", () => {
       const rules = compileCssToUbolRules(css, "example.com");
       expect(rules).toEqual([
         "example.com##:root:style(color-scheme: light dark !important)",
-        "example.com##img:style(background-color: light-dark(#ffffff, #000000) !important)",
+        "example.com##img:style(background-color: light-dark(#ffffff, #000000))",
       ]);
       for (const r of rules) validateRuleWithUbo(r);
     });
@@ -330,7 +326,7 @@ describe("Converter Core", () => {
       `;
       const rules = compileCssToUbolRules(css, "example.com");
       expect(rules).toEqual([
-        "example.com##.notice:matches-media((prefers-color-scheme: light)):style(background-color: #f9f9f9 !important; opacity: 0.95 !important)",
+        "example.com##.notice:matches-media((prefers-color-scheme: light)):style(background-color: #f9f9f9; opacity: 0.95)",
       ]);
       for (const r of rules) validateRuleWithUbo(r);
     });
@@ -348,8 +344,8 @@ describe("Converter Core", () => {
       `;
       const rules = compileCssToUbolRules(css, "example.com");
       expect(rules).toEqual([
-        "example.com##img:style(filter: grayscale(1) !important)",
-        "example.com##img:matches-media((prefers-color-scheme: light)):style(filter: contrast(1.2) !important)",
+        "example.com##img:style(filter: grayscale(1))",
+        "example.com##img:matches-media((prefers-color-scheme: light)):style(filter: contrast(1.2))",
       ]);
       for (const r of rules) validateRuleWithUbo(r);
     });

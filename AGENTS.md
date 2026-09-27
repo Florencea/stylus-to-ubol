@@ -17,7 +17,7 @@ Guidelines for AI agents and human contributors working on this repository.
   - Non-color properties (opacity, font-size, layout variables), CSS `filter` properties, and scheme-exclusive styles (light-only or dark-only) must fall back to `:matches-media((prefers-color-scheme: light|dark)):style(...)`.
   - Generic responsive media queries (e.g. `max-width`, `min-width`) must compile to `:matches-media(...)` style rules.
   - Platform and device conditions must be classified during migration (via pointer media queries or section naming) or use uBO preprocessor directives (`!#if env_mobile` / `!#endif`).
-  - All declarations must enforce `!important`.
+  - Declarations must preserve the original CSS `!important` state (do not enforce `!important` if not present in the source CSS).
 - **Language & Style Constraints**:
   - Agent responses to the user in chat must use Traditional Chinese (繁體中文).
   - All other project artifacts—including source code, comments, UI text, documentation, commit messages, and tests—must use concise English.

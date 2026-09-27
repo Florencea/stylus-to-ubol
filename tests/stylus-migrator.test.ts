@@ -53,7 +53,7 @@ describe("Stylus Migrator", () => {
     }
   });
 
-  it("correctly formats style injection rules with enforced !important", () => {
+  it("correctly formats style injection rules preserving original !important state", () => {
     const css = `
       .header {
         background-color: #f5f5f5;
@@ -63,9 +63,68 @@ describe("Stylus Migrator", () => {
     const result = parseStylusSection(css, ["example.com"]);
     expect(result.cosmeticRules).toHaveLength(0);
     const firstRule = result.styleRules[0];
-    expect(firstRule).toBeDefined();
+    expect(firstRule).toBe(
+      "example.com##.header:style(background-color: #f5f5f5; font-size: 14px !important)",
+    );
     if (firstRule) {
       validateRuleWithUbo(firstRule);
+    }
+  });
+
+  it("preserves original !important state in light-dark color pairing and non-color media queries", () => {
+    const css = `
+      .mixed-colors {
+        background: #ffffff;
+        color: #000000 !important;
+      }
+      @media (prefers-color-scheme: dark) {
+        .mixed-colors {
+          background: #111111;
+          color: #ffffff;
+        }
+      }
+      .mixed-noncolors {
+        opacity: 0.9;
+        font-size: 14px !important;
+      }
+      @media (prefers-color-scheme: dark) {
+        .mixed-noncolors {
+          opacity: 0.5 !important;
+          font-size: 16px;
+        }
+      }
+    `;
+    const result = parseStylusSection(css, ["example.com"]);
+    const colorRule = result.styleRules.find((r) =>
+      r.includes("##.mixed-colors:style"),
+    );
+    expect(colorRule).toBeDefined();
+    // background: neither has !important -> light-dark without !important
+    expect(colorRule).toContain("background: light-dark(#ffffff, #111111);");
+    // color: base had !important -> light-dark with !important
+    expect(colorRule).toContain(
+      "color: light-dark(#000000, #ffffff) !important",
+    );
+
+    const baseNonColorRule = result.styleRules.find(
+      (r) =>
+        r.includes("##.mixed-noncolors:style") && !r.includes(":matches-media"),
+    );
+    expect(baseNonColorRule).toBeDefined();
+    expect(baseNonColorRule).toContain("opacity: 0.9;");
+    expect(baseNonColorRule).toContain("font-size: 14px !important");
+
+    const darkNonColorRule = result.styleRules.find((r) =>
+      r.includes(
+        "##.mixed-noncolors:matches-media((prefers-color-scheme: dark)):style",
+      ),
+    );
+    expect(darkNonColorRule).toBeDefined();
+    expect(darkNonColorRule).toContain("opacity: 0.5 !important;");
+    expect(darkNonColorRule).toContain("font-size: 16px");
+
+    for (const rule of result.styleRules) {
+      validateRuleWithUbo(rule);
     }
   });
 
@@ -93,12 +152,8 @@ describe("Stylus Migrator", () => {
 
     const contentRule = result.styleRules.find((r) => r.includes(".content"));
     expect(contentRule).toBeDefined();
-    expect(contentRule).toContain(
-      "color: light-dark(#111111, #eeeeee) !important;",
-    );
-    expect(contentRule).toContain(
-      "background: light-dark(#ffffff, #222222) !important",
-    );
+    expect(contentRule).toContain("color: light-dark(#111111, #eeeeee);");
+    expect(contentRule).toContain("background: light-dark(#ffffff, #222222)");
 
     // Must include color-scheme: light dark !important;
     const hasColorScheme = result.styleRules.some((r) =>
@@ -124,11 +179,9 @@ describe("Stylus Migrator", () => {
     expect(heroRule).toBeDefined();
 
     expect(heroRule).toContain(
-      "background: light-dark(linear-gradient(180deg, rgba(0, 0, 0, 0.8), rgba(255, 255, 255, 0.2)), linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(0, 0, 0, 0.9))) !important;",
+      "background: light-dark(linear-gradient(180deg, rgba(0, 0, 0, 0.8), rgba(255, 255, 255, 0.2)), linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(0, 0, 0, 0.9)));",
     );
-    expect(heroRule).toContain(
-      "width: calc(100% - (2 * var(--gutter, 16px))) !important",
-    );
+    expect(heroRule).toContain("width: calc(100% - (2 * var(--gutter, 16px)))");
 
     for (const rule of result.styleRules) {
       validateRuleWithUbo(rule);
@@ -152,12 +205,8 @@ describe("Stylus Migrator", () => {
     const rootRule = result.styleRules.find((r) => r.includes(":root"));
     expect(rootRule).toBeDefined();
 
-    expect(rootRule).toContain(
-      "--text-color: light-dark(#24292f, #c9d1d9) !important",
-    );
-    expect(rootRule).toContain(
-      "--bg-color: light-dark(#ffffff, #0d1117) !important",
-    );
+    expect(rootRule).toContain("--text-color: light-dark(#24292f, #c9d1d9)");
+    expect(rootRule).toContain("--bg-color: light-dark(#ffffff, #0d1117)");
     expect(rootRule).toContain("color-scheme: light dark !important");
 
     if (rootRule) {
@@ -187,14 +236,10 @@ describe("Stylus Migrator", () => {
     );
 
     expect(cardRule).toBeDefined();
-    expect(cardRule).toContain(
-      "background: light-dark(#ffffff, #1a1a1a) !important",
-    );
+    expect(cardRule).toContain("background: light-dark(#ffffff, #1a1a1a)");
 
     expect(titleRule).toBeDefined();
-    expect(titleRule).toContain(
-      "color: light-dark(#111111, #f0f0f0) !important",
-    );
+    expect(titleRule).toContain("color: light-dark(#111111, #f0f0f0)");
 
     for (const rule of result.styleRules) {
       validateRuleWithUbo(rule);
@@ -659,18 +704,18 @@ describe("Stylus Migrator", () => {
 
     // Check base filter rules (individual sub-selectors)
     expect(result.sandboxFilters).toContain(
-      "darksite.com##img:style(filter: grayscale(0.5) !important)",
+      "darksite.com##img:style(filter: grayscale(0.5))",
     );
     expect(result.sandboxFilters).toContain(
-      "darksite.com##video:style(filter: grayscale(0.5) !important)",
+      "darksite.com##video:style(filter: grayscale(0.5))",
     );
 
     // Check dark rules (individual sub-selectors)
     expect(result.sandboxFilters).toContain(
-      "darksite.com##img:matches-media((prefers-color-scheme: dark)):style(filter: invert(1) hue-rotate(180deg) !important; opacity: 0.8 !important)",
+      "darksite.com##img:matches-media((prefers-color-scheme: dark)):style(filter: invert(1) hue-rotate(180deg); opacity: 0.8)",
     );
     expect(result.sandboxFilters).toContain(
-      "darksite.com##video:matches-media((prefers-color-scheme: dark)):style(filter: invert(1) hue-rotate(180deg) !important; opacity: 0.8 !important)",
+      "darksite.com##video:matches-media((prefers-color-scheme: dark)):style(filter: invert(1) hue-rotate(180deg); opacity: 0.8)",
     );
 
     for (const r of result.sandboxFilters ?? []) {
@@ -707,17 +752,17 @@ describe("Stylus Migrator", () => {
     expect(result.sandboxFilters).toBeDefined();
 
     expect(result.sandboxFilters).toContain(
-      "lightsite.com##img:style(filter: grayscale(0.2) !important)",
+      "lightsite.com##img:style(filter: grayscale(0.2))",
     );
     expect(result.sandboxFilters).toContain(
-      "lightsite.com##video:style(filter: grayscale(0.2) !important)",
+      "lightsite.com##video:style(filter: grayscale(0.2))",
     );
 
     expect(result.sandboxFilters).toContain(
-      "lightsite.com##img:matches-media((prefers-color-scheme: light)):style(filter: contrast(1.1) brightness(0.95) !important; opacity: 0.9 !important)",
+      "lightsite.com##img:matches-media((prefers-color-scheme: light)):style(filter: contrast(1.1) brightness(0.95); opacity: 0.9)",
     );
     expect(result.sandboxFilters).toContain(
-      "lightsite.com##video:matches-media((prefers-color-scheme: light)):style(filter: contrast(1.1) brightness(0.95) !important; opacity: 0.9 !important)",
+      "lightsite.com##video:matches-media((prefers-color-scheme: light)):style(filter: contrast(1.1) brightness(0.95); opacity: 0.9)",
     );
 
     for (const r of result.sandboxFilters ?? []) {
@@ -783,10 +828,10 @@ describe("Stylus Migrator", () => {
       "example.com##.mobile-ad",
     ]);
     expect(parsed.scopedStyleRules?.global).toContain(
-      "example.com##.desktop-btn:style(font-size: 14px !important)",
+      "example.com##.desktop-btn:style(font-size: 14px)",
     );
     expect(parsed.scopedStyleRules?.mobile).toContain(
-      "example.com##.touch-btn:style(font-size: 18px !important)",
+      "example.com##.touch-btn:style(font-size: 18px)",
     );
   });
 
@@ -829,7 +874,7 @@ describe("Stylus Migrator", () => {
       ["site.com", [".desktop-sidebar"]],
     ]);
     expect(dual.desktop.sandboxFilters).toContain(
-      "site.com##body:style(font-size: 15px !important)",
+      "site.com##body:style(font-size: 15px)",
     );
     expect(
       dual.desktop.customFilters.some(([, sels]) =>
@@ -843,10 +888,10 @@ describe("Stylus Migrator", () => {
       ["site.com", [".desktop-sidebar", ".mobile-drawer"]],
     ]);
     expect(dual.mobile.sandboxFilters).toContain(
-      "site.com##body:style(font-size: 15px !important)",
+      "site.com##body:style(font-size: 15px)",
     );
     expect(dual.mobile.sandboxFilters).toContain(
-      "site.com##body:style(font-size: 18px !important)",
+      "site.com##body:style(font-size: 18px)",
     );
 
     // Validate rules with uBO parser
@@ -1005,11 +1050,9 @@ describe("Stylus Migrator", () => {
       (r) => r.includes(".badge:style") && !r.includes(":matches-media"),
     );
     expect(baseRule).toBeDefined();
-    expect(baseRule).toContain(
-      "color: light-dark(#111111, #eeeeee) !important;",
-    );
-    expect(baseRule).toContain("opacity: 0.9 !important;");
-    expect(baseRule).toContain("font-size: 14px !important");
+    expect(baseRule).toContain("color: light-dark(#111111, #eeeeee);");
+    expect(baseRule).toContain("opacity: 0.9;");
+    expect(baseRule).toContain("font-size: 14px");
     expect(baseRule).not.toContain("light-dark(0.9, 0.5)");
     expect(baseRule).not.toContain("light-dark(14px, 16px)");
 
@@ -1018,8 +1061,8 @@ describe("Stylus Migrator", () => {
       r.includes(".badge:matches-media((prefers-color-scheme: dark)):style"),
     );
     expect(darkRule).toBeDefined();
-    expect(darkRule).toContain("opacity: 0.5 !important;");
-    expect(darkRule).toContain("font-size: 16px !important");
+    expect(darkRule).toContain("opacity: 0.5;");
+    expect(darkRule).toContain("font-size: 16px");
     expect(darkRule).not.toContain("color:");
 
     for (const rule of result.styleRules) {
@@ -1069,40 +1112,40 @@ describe("Stylus Migrator", () => {
 
     // Check style rules are flattened compound selectors
     expect(result.styleRules).toContain(
-      "example.com##.card:style(background: #ffffff !important)",
+      "example.com##.card:style(background: #ffffff)",
     );
     expect(result.styleRules).toContain(
-      "example.com##.panel:style(background: #ffffff !important)",
+      "example.com##.panel:style(background: #ffffff)",
     );
     expect(result.styleRules).toContain(
-      "example.com##.card .title:style(font-size: 16px !important)",
+      "example.com##.card .title:style(font-size: 16px)",
     );
     expect(result.styleRules).toContain(
-      "example.com##.panel .title:style(font-size: 16px !important)",
+      "example.com##.panel .title:style(font-size: 16px)",
     );
     expect(result.styleRules).toContain(
-      "example.com##.card .title span:style(font-weight: bold !important)",
+      "example.com##.card .title span:style(font-weight: bold)",
     );
     expect(result.styleRules).toContain(
-      "example.com##.panel .title span:style(font-weight: bold !important)",
+      "example.com##.panel .title span:style(font-weight: bold)",
     );
     expect(result.styleRules).toContain(
-      "example.com##.card.highlighted:style(border-color: #ff0000 !important)",
+      "example.com##.card.highlighted:style(border-color: #ff0000)",
     );
     expect(result.styleRules).toContain(
-      "example.com##.panel.highlighted:style(border-color: #ff0000 !important)",
+      "example.com##.panel.highlighted:style(border-color: #ff0000)",
     );
     expect(result.styleRules).toContain(
-      "example.com##.card:hover:style(background: #f0f0f0 !important)",
+      "example.com##.card:hover:style(background: #f0f0f0)",
     );
     expect(result.styleRules).toContain(
-      "example.com##.panel:hover:style(background: #f0f0f0 !important)",
+      "example.com##.panel:hover:style(background: #f0f0f0)",
     );
     expect(result.styleRules).toContain(
-      'example.com##.card::after:style(content: "" !important)',
+      'example.com##.card::after:style(content: "")',
     );
     expect(result.styleRules).toContain(
-      'example.com##.panel::after:style(content: "" !important)',
+      'example.com##.panel::after:style(content: "")',
     );
 
     for (const rule of [...result.cosmeticRules, ...result.styleRules]) {
@@ -1134,18 +1177,18 @@ describe("Stylus Migrator", () => {
     );
     expect(standardRootRule).toBeDefined();
     expect(standardRootRule).toContain(
-      "--theme-accent: light-dark(#ffffff, #000000) !important",
+      "--theme-accent: light-dark(#ffffff, #000000)",
     );
-    expect(standardRootRule).toContain("--layout-spacing: 8px !important;");
-    expect(standardRootRule).toContain("--card-opacity: 0.8 !important;");
+    expect(standardRootRule).toContain("--layout-spacing: 8px;");
+    expect(standardRootRule).toContain("--card-opacity: 0.8");
 
     // Non-color variables fall back to :matches-media
     const darkRootRule = result.styleRules.find((r) =>
       r.includes("##:root:matches-media((prefers-color-scheme: dark)):style"),
     );
     expect(darkRootRule).toBeDefined();
-    expect(darkRootRule).toContain("--layout-spacing: 16px !important;");
-    expect(darkRootRule).toContain("--card-opacity: 0.5 !important");
+    expect(darkRootRule).toContain("--layout-spacing: 16px;");
+    expect(darkRootRule).toContain("--card-opacity: 0.5");
     expect(darkRootRule).not.toContain("--theme-accent");
 
     for (const rule of result.styleRules) {
@@ -1180,26 +1223,26 @@ describe("Stylus Migrator", () => {
       (r) => r.includes(".header:style") && !r.includes(":matches-media"),
     );
     expect(standardHeader).toBeDefined();
-    expect(standardHeader).toContain("height: 60px !important");
+    expect(standardHeader).toContain("height: 60px");
 
     const mobileHeader = result.styleRules.find((r) =>
       r.includes(".header:matches-media((max-width: 600px)):style"),
     );
     expect(mobileHeader).toBeDefined();
-    expect(mobileHeader).toContain("height: 40px !important;");
-    expect(mobileHeader).toContain("padding: 5px !important");
+    expect(mobileHeader).toContain("height: 40px;");
+    expect(mobileHeader).toContain("padding: 5px");
 
     const mobileSidebar = result.styleRules.find((r) =>
       r.includes(".sidebar:matches-media((max-width: 600px)):style"),
     );
     expect(mobileSidebar).toBeDefined();
-    expect(mobileSidebar).toContain("display: none !important");
+    expect(mobileSidebar).toContain("display: none");
 
     const desktopContainer = result.styleRules.find((r) =>
       r.includes(".container:matches-media((min-width: 1200px)):style"),
     );
     expect(desktopContainer).toBeDefined();
-    expect(desktopContainer).toContain("max-width: 1140px !important");
+    expect(desktopContainer).toContain("max-width: 1140px");
 
     for (const rule of result.styleRules) {
       validateRuleWithUbo(rule);
