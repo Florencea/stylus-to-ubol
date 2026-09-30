@@ -58,16 +58,13 @@ export type UbolConfig = z.infer<typeof UbolConfigSchema>;
 stylus-to-ubol/
 ├── index.html             # Client-side interface
 ├── src/
+│   ├── compiler.ts        # Unified in-memory compiler engine & statistics
 │   ├── main.ts            # UI event controller & download trigger
-│   ├── converter.ts       # In-memory AST compiler & rule synthesizer
-│   ├── schema.ts          # Zod schemas for Stylus and uBOL config
-│   ├── stylus-loader.ts   # Stylus JSON rule extraction
 │   └── style.css          # Minimalist styles
 ├── tests/
-│   ├── converter.test.ts  # Vitest unit tests for compiler
-│   ├── main.test.ts       # Vitest unit tests for UI helpers
+│   ├── compiler.test.ts   # Vitest unit tests for compiler engine
 │   └── e2e/
-│       └── converter.spec.ts # Playwright E2E integration tests
+│       └── app.spec.ts    # Playwright E2E integration tests
 ├── tsconfig.json          # Strict TypeScript configuration
 └── vite.config.ts         # Vite configuration
 ```

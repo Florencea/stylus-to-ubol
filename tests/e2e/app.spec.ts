@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test.describe("stylus-to-ubol converter interface", () => {
+test.describe("stylus-to-ubol web interface", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/");
   });

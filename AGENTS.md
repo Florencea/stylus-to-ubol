@@ -63,13 +63,11 @@ All checks must pass with zero errors and zero warnings.
 
 ## 4. Architecture & Core Modules
 
-- `src/schema.ts`: Zod schema definitions (`StylusExportSchema`, `UbolConfigSchema`) and types.
-- `src/converter.ts`: AST conversion pipeline (`buildUboRules`, `serializeDeclaration`, `splitSelectorAndPseudoElement`).
-- `src/stylus-loader.ts`: Stylus export rule extraction helper (`parseStylusRules`).
-- `src/main.ts`: Client-side converter controller, statistics computation, and JSON export triggers.
+- `src/compiler.ts`: Unified core compiler engine (schemas, Stylus rule extraction, AST conversion via `css-tree`, statistics calculation, and `compileStylus` API).
+- `src/main.ts`: Client-side converter controller, drag & drop handler, and JSON export triggers.
 - `src/style.css`: Minimalist converter UI stylesheet.
-- `tests/`: Vitest unit tests (`converter.test.ts`, `main.test.ts`).
-- `tests/e2e/`: Playwright end-to-end integration tests (`converter.spec.ts`).
+- `tests/compiler.test.ts`: Vitest unit tests for compiler engine and rule synthesis.
+- `tests/e2e/app.spec.ts`: Playwright end-to-end integration tests for web interface.
 
 ## 5. Git Workflow & Commit Restrictions
 

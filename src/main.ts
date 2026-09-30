@@ -1,89 +1,8 @@
-import { type UbolConfig } from "./schema.ts";
-import { buildUboRules } from "./converter.ts";
-import { parseStylusRules } from "./stylus-loader.ts";
-
-export interface ConversionStats {
-  domainCount: number;
-  hideRuleCount: number;
-  styleRuleCount: number;
-}
-
-export interface ConversionResult {
-  config: UbolConfig;
-  stats: ConversionStats;
-}
-
-export const computeConfigStats = (config: UbolConfig): ConversionStats => {
-  const domainSet = new Set<string>();
-  let hideRuleCount = 0;
-
-  for (const [domain, selectors] of config.customFilters) {
-    const trimmed = domain.trim();
-    if (trimmed.length > 0) {
-      domainSet.add(trimmed);
-    }
-    hideRuleCount += selectors.length;
-  }
-
-  for (const rule of config.sandboxFilters) {
-    const hashIdx = rule.indexOf("##");
-    if (hashIdx !== -1) {
-      const domainPart = rule.slice(0, hashIdx).trim();
-      if (domainPart.length > 0) {
-        for (const token of domainPart.split(",")) {
-          const trimmed = token.trim();
-          if (trimmed.length > 0) {
-            domainSet.add(trimmed);
-          }
-        }
-      }
-    }
-  }
-
-  return {
-    domainCount: domainSet.size,
-    hideRuleCount,
-    styleRuleCount: config.sandboxFilters.length,
-  };
-};
-
-export const convertStylusContent = (rawText: string): ConversionResult => {
-  const trimmed = rawText.trim();
-  if (trimmed.length === 0) {
-    throw new Error("Uploaded file is empty.");
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(trimmed);
-  } catch (err) {
-    throw new Error(
-      `Failed to parse JSON: ${err instanceof Error ? err.message : String(err)}`,
-      { cause: err },
-    );
-  }
-
-  let rules;
-  try {
-    rules = parseStylusRules(parsed);
-  } catch (err) {
-    throw new Error(
-      `Invalid Stylus JSON: ${err instanceof Error ? err.message : String(err)}`,
-      { cause: err },
-    );
-  }
-
-  if (rules.length === 0) {
-    throw new Error(
-      "Invalid Stylus JSON: No styles or code sections found in the uploaded file.",
-    );
-  }
-
-  const config = buildUboRules(rules);
-  const stats = computeConfigStats(config);
-
-  return { config, stats };
-};
+import {
+  compileStylus,
+  type ConversionResult,
+  type UbolConfig,
+} from "./compiler.ts";
 
 export const triggerDownload = (filename: string, content: string): void => {
   const blob = new Blob([content], { type: "application/json;charset=utf-8" });
@@ -144,11 +63,11 @@ export const setupConverterApp = (): void => {
     }
   };
 
-  const showSuccess = (filename: string, result: ConversionResult): void => {
+  const showSuccess = (name: string, result: ConversionResult): void => {
     currentConfig = result.config;
 
     if (errorPanel !== null) errorPanel.hidden = true;
-    if (fileName !== null) fileName.textContent = filename;
+    if (fileName !== null) fileName.textContent = name;
     if (fileStatus !== null) fileStatus.hidden = false;
 
     if (statsDomains !== null) {
@@ -170,7 +89,7 @@ export const setupConverterApp = (): void => {
       .text()
       .then((rawText) => {
         try {
-          const result = convertStylusContent(rawText);
+          const result = compileStylus(rawText);
           showSuccess(file.name, result);
         } catch (err) {
           showError(err);

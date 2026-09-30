@@ -14,6 +14,7 @@
     Arial, sans-serif;
   --font-mono:
     ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+  color-scheme: dark;
 }
 
 * {
