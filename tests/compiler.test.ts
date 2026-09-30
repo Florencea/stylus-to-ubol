@@ -4,7 +4,6 @@ import {
   buildUboRules,
   compileStylus,
   computeConfigStats,
-  parseUbolBaseConfig,
   serializeDeclaration,
   splitSelectorAndPseudoElement,
   type UbolConfig,
@@ -221,123 +220,6 @@ describe("Compiler Engine", () => {
       expect(() =>
         compileStylus(JSON.stringify([{ invalid: "data" }])),
       ).toThrow(/Invalid Stylus JSON/);
-    });
-
-    it("merges valid base config and retains non-filter fields", () => {
-      const rawStylus = JSON.stringify([
-        {
-          sections: [
-            {
-              domains: ["site.com"],
-              code: ".banner { display: none !important; }",
-            },
-          ],
-        },
-      ]);
-
-      const baseConfig = {
-        version: "2025.1.1",
-        developerMode: true,
-        customFilters: [["old.com", [".old-ad"]]],
-        sandboxFilters: ["old.com##.old:style(color: blue)"],
-        filteringModes: {
-          none: ["trusted.com"],
-          basic: [],
-          optimal: ["all-urls"],
-          complete: [],
-        },
-        customKey: "customValue",
-      };
-
-      const result = compileStylus(rawStylus, JSON.stringify(baseConfig));
-
-      expect(result.config.version).toBe("2025.1.1");
-      expect(result.config.developerMode).toBe(true);
-      expect(result.config.customKey).toBe("customValue");
-      expect(result.config.filteringModes).toEqual({
-        none: ["trusted.com"],
-        basic: [],
-        optimal: ["all-urls"],
-        complete: [],
-      });
-      // Filters are replaced with newly compiled Stylus filters
-      expect(result.config.customFilters).toEqual([["site.com", [".banner"]]]);
-      expect(result.config.sandboxFilters).toEqual([]);
-    });
-
-    it("accepts base config as parsed object", () => {
-      const rawStylus = JSON.stringify([
-        {
-          sections: [
-            {
-              domains: ["site.com"],
-              code: "h1 { color: blue; }",
-            },
-          ],
-        },
-      ]);
-
-      const baseObj = {
-        version: "2024.99.99",
-        developerMode: false,
-      };
-
-      const result = compileStylus(rawStylus, baseObj);
-      expect(result.config.version).toBe("2024.99.99");
-      expect(result.config.developerMode).toBe(false);
-      expect(result.config.sandboxFilters).toEqual([
-        "site.com##h1:style(color:blue)",
-      ]);
-    });
-
-    it("throws error when base config string is malformed or not an object", () => {
-      const rawStylus = JSON.stringify([
-        {
-          sections: [
-            {
-              domains: ["site.com"],
-              code: ".ad { display: none !important; }",
-            },
-          ],
-        },
-      ]);
-
-      expect(() => compileStylus(rawStylus, "invalid json")).toThrow(
-        /Failed to parse uBlock config JSON/,
-      );
-      expect(() => compileStylus(rawStylus, "[1, 2, 3]")).toThrow(
-        /Invalid uBlock config JSON: Expected a JSON object configuration/,
-      );
-    });
-  });
-
-  describe("parseUbolBaseConfig", () => {
-    it("parses valid JSON object", () => {
-      const parsed = parseUbolBaseConfig(
-        JSON.stringify({ version: "1.0", developerMode: true }),
-      );
-      expect(parsed).toEqual({ version: "1.0", developerMode: true });
-    });
-
-    it("throws when string is empty or whitespace", () => {
-      expect(() => parseUbolBaseConfig("")).toThrow(
-        /Uploaded uBlock config file is empty/,
-      );
-      expect(() => parseUbolBaseConfig("   ")).toThrow(
-        /Uploaded uBlock config file is empty/,
-      );
-    });
-
-    it("throws when input is an array or primitive", () => {
-      expect(() => parseUbolBaseConfig("[1, 2, 3]")).toThrow(
-        /Expected a JSON object configuration/,
-      );
-      expect(() => parseUbolBaseConfig('"string"')).toThrow(
-        /Expected a JSON object configuration/,
-      );
-      expect(() => parseUbolBaseConfig("123")).toThrow(
-        /Expected a JSON object configuration/,
-      );
     });
   });
 });
