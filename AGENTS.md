@@ -4,20 +4,19 @@ Guidelines for AI agents and human contributors working on this repository.
 
 ## 1. Project Overview & Hard Rules
 
-- **Unidirectional Data Flow**: Stylus JSON export is the sole Single Source of Truth (SSOT). Conversion is strictly one-way: Stylus JSON compiles to uBOL JSON configurations (desktop, mobile, and complete). There is no reverse conversion back to Stylus.
-- **Zero CSS File Persistence**: Do not persist intermediate `.css` file assets to disk. All conversions are performed in memory. The sole persistent data asset is uBOL backup JSON.
-- **In-Memory AST Architecture**: All AST parsing, CSS nesting flattening, and style transformations run in memory via `css-tree` (with a custom parser fork supporting CSS nesting blocks) and validated via `@gorhill/ubo-core`.
+- **Unidirectional Data Flow**: Stylus JSON export is the sole Single Source of Truth (SSOT). Conversion is strictly one-way: Stylus JSON compiles to uBOL JSON configuration (`my-ubol-settings.json`). There is no reverse conversion back to Stylus.
+- **Zero CSS File Persistence**: Do not persist intermediate `.css` file assets to disk. All conversions are performed in memory. The sole persistent data asset is uBOL settings JSON.
+- **In-Memory AST Architecture**: All AST parsing and style transformations run in memory via `css-tree`.
 - **Rules Splitting Architecture**:
   - `customFilters`: Dedicated to pure cosmetic hide selectors grouped by domain: `[domain, [selector1, selector2, ...]]`.
   - `sandboxFilters`: Dedicated to `:style(...)` style injection rules stored as full uBO syntax strings: `domain##selector:style(...)`.
   - Global generic rules (empty domains or `*`) use `*` domain in `customFilters` and `*##` prefix in `sandboxFilters`.
-- **Forbidden `@media` Blocks in uBOL Rules**:
-  - Filter rules cannot contain raw `@media { ... }` blocks.
-  - Color scheme media queries (`prefers-color-scheme: dark` / `prefers-color-scheme: light`) for paired color properties and color-bearing CSS variables must be parsed at AST level and converted to modern CSS `light-dark(lightVal, darkVal)` with `color-scheme: light dark !important;` injected at root.
-  - Non-color properties (opacity, font-size, layout variables), CSS `filter` properties, and scheme-exclusive styles (light-only or dark-only) must fall back to `:matches-media((prefers-color-scheme: light|dark)):style(...)`.
-  - Generic responsive media queries (e.g. `max-width`, `min-width`) must compile to `:matches-media(...)` style rules.
-  - Platform and device conditions must be classified during migration (via pointer media queries or section naming) or use uBO preprocessor directives (`!#if env_mobile` / `!#endif`).
-  - Declarations must preserve the original CSS `!important` state (do not enforce `!important` if not present in the source CSS).
+- **Procedural Rules & @media Handling**:
+  - Declarations are serialized into `:style(...)` rules.
+  - Pure `display: none !important` rules outside coarse pointer queries route to `customFilters`.
+  - Nested `@media` scopes compile to `:matches-media(...)` suffixes.
+  - Pseudo-elements are separated to ensure `:matches-media` is placed before pseudo-elements.
+  - Declarations preserve the original CSS `!important` state.
 - **Language & Style Constraints**:
   - Agent responses to the user in chat must use Traditional Chinese (繁體中文).
   - All other project artifacts—including source code, comments, UI text, documentation, commit messages, and tests—must use concise English.
@@ -64,18 +63,12 @@ All checks must pass with zero errors and zero warnings.
 
 ## 4. Architecture & Core Modules
 
-- `src/core/schema.ts`: Zod schema definitions (`UbolConfigSchema`, `UbolBackupSchema`) and round-trip filter serialization/deserialization helpers.
-- `src/core/converter.ts`: Parsing and selector normalization helpers (`extractMatchesMedia`, `splitSelectorList`, `parseCosmeticPattern`, `compileCssToUbolRules`).
-- `src/core/migrator/`: Dedicated single-responsibility submodules:
-  - `ast-walker.ts`: Custom `css-tree` parser fork supporting nested blocks, resolving nested selectors, and tracking `@media` scopes.
-  - `color-detector.ts`: High-precision CSS color property & value sniffer supporting named colors, hex, functions (`rgb`, `hsl`, `oklch`), and color variable keywords.
-  - `formatter.ts`: Canonical `:style(...)` declaration serializer, ensuring clean whitespace, stripping trailing semicolons, and handling escaped semicolons.
-  - `rule-synthesizer.ts`: Rule compilation for cosmetic hide vs sandbox style rules, `light-dark()` pairing, `:matches-media` fallbacks, and root `:style(color-scheme: light dark !important)` injection.
-  - `types.ts`: Domain types and interfaces (`RuleScope`, `StylusSectionResult`, `DualUbolConfig`, `AllUbolConfigs`, `SelectorEntry`).
-- `src/core/stylus-migrator.ts`: Pipeline facade orchestrating Stylus JSON export migration to uBOL backup format (`migrateStylusJsonAll`, `migrateStylusJsonDual`, `migrateStylusJson`, `parseStylusSection`).
+- `src/schema.ts`: Zod schema definitions (`StylusExportSchema`, `UbolConfigSchema`) and types.
+- `src/converter.ts`: AST conversion pipeline (`buildUboRules`, `serializeDeclaration`, `splitSelectorAndPseudoElement`).
+- `src/stylus-loader.ts`: Stylus export rule extraction helper (`parseStylusRules`).
 - `src/main.ts`: Client-side converter controller, statistics computation, and JSON export triggers.
 - `src/style.css`: Minimalist converter UI stylesheet.
-- `tests/`: Vitest unit tests (`converter.test.ts`, `main.test.ts`, `stylus-migrator.test.ts`).
+- `tests/`: Vitest unit tests (`converter.test.ts`, `main.test.ts`).
 - `tests/e2e/`: Playwright end-to-end integration tests (`converter.spec.ts`).
 
 ## 5. Git Workflow & Commit Restrictions

@@ -1,15 +1,17 @@
 import { describe, expect, it } from "vitest";
-import {
-  computeConfigStats,
-  convertStylusContent,
-  validateStylusData,
-} from "../src/main.ts";
-import type { UbolConfig } from "../src/core/schema.ts";
+import { computeConfigStats, convertStylusContent } from "../src/main.ts";
+import type { UbolConfig } from "../src/schema.ts";
 
 describe("Main UI Helper Functions", () => {
   it("computes stats accurately from UbolConfig", () => {
     const config: UbolConfig = {
       version: "2026.920.1710",
+      filteringModes: {
+        none: [],
+        basic: [],
+        optimal: ["all-urls"],
+        complete: [],
+      },
       customFilters: [
         ["example.com", [".ad1", ".ad2"]],
         ["foo.com", [".sidebar"]],
@@ -29,62 +31,16 @@ describe("Main UI Helper Functions", () => {
     expect(stats.styleRuleCount).toBe(2);
   });
 
-  it("validates valid Stylus JSON structures and rejects invalid ones", () => {
-    // Valid array of styles
-    expect(() => {
-      validateStylusData([
-        {
-          name: "Test",
-          sections: [{ code: "body { color: red; }" }],
-        },
-      ]);
-    }).not.toThrow();
-
-    // Valid object with styles
-    expect(() => {
-      validateStylusData({
-        styles: [
-          {
-            name: "Test",
-            sections: [{ code: "body { color: red; }" }],
-          },
-        ],
-      });
-    }).not.toThrow();
-
-    // Valid object with sections
-    expect(() => {
-      validateStylusData({
-        sections: [{ code: "body { color: red; }" }],
-      });
-    }).not.toThrow();
-
-    // Rejects null
-    expect(() => {
-      validateStylusData(null);
-    }).toThrow(/Expected a JSON object or array/);
-
-    // Rejects empty object
-    expect(() => {
-      validateStylusData({});
-    }).toThrow(/No styles or code sections found/);
-
-    // Rejects random object
-    expect(() => {
-      validateStylusData({ foo: "bar" });
-    }).toThrow(/No styles or code sections found/);
-
-    // Rejects empty array
-    expect(() => {
-      validateStylusData([]);
-    }).toThrow(/No styles or code sections found/);
-  });
-
-  it("converts Stylus JSON string and returns desktop, mobile, and complete configs with stats", () => {
+  it("converts Stylus JSON string and returns config with stats", () => {
     const rawStylus = JSON.stringify([
       {
+        settings: {},
+      },
+      {
+        id: 1,
         name: "My Style",
         enabled: true,
+        installDate: 123456,
         sections: [
           {
             domains: ["site.com"],
@@ -101,16 +57,18 @@ describe("Main UI Helper Functions", () => {
 
     const result = convertStylusContent(rawStylus);
 
-    expect(result.desktop).toBeDefined();
-    expect(result.mobile).toBeDefined();
-    expect(result.complete).toBeDefined();
+    expect(result.config).toBeDefined();
+    expect(result.config.version).toBe("2026.920.1710");
+    expect(result.config.customFilters).toEqual([
+      ["site.com", [".desktop-ad"]],
+    ]);
+    expect(result.config.sandboxFilters).toEqual([
+      "site.com##.mobile-ad:matches-media((pointer:coarse)):style(display:none !important)",
+    ]);
 
-    expect(result.desktopStats.domainCount).toBe(1);
-    expect(result.desktopStats.hideRuleCount).toBe(1);
-    expect(result.mobileStats.domainCount).toBe(1);
-    expect(result.mobileStats.hideRuleCount).toBe(2);
-    expect(result.completeStats.domainCount).toBe(1);
-    expect(result.completeStats.hideRuleCount).toBe(2);
+    expect(result.stats.domainCount).toBe(1);
+    expect(result.stats.hideRuleCount).toBe(1);
+    expect(result.stats.styleRuleCount).toBe(1);
   });
 
   it("throws clear error on malformed JSON or empty text", () => {
@@ -118,5 +76,11 @@ describe("Main UI Helper Functions", () => {
     expect(() => convertStylusContent("not a json")).toThrow(
       /Failed to parse JSON/,
     );
+  });
+
+  it("throws clear error on invalid structure without sections", () => {
+    expect(() =>
+      convertStylusContent(JSON.stringify([{ invalid: "data" }])),
+    ).toThrow(/Invalid Stylus JSON/);
   });
 });

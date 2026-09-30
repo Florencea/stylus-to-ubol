@@ -15,23 +15,23 @@ test.describe("stylus-to-ubol converter interface", () => {
     await expect(page.locator("#stats-panel")).toBeHidden();
     await expect(page.locator("#error-panel")).toBeHidden();
 
-    // Download buttons are disabled initially
-    const btnDesktop = page.locator("#btn-download-desktop");
-    const btnMobile = page.locator("#btn-download-mobile");
-    const btnComplete = page.locator("#btn-download-complete");
-
-    await expect(btnDesktop).toBeDisabled();
-    await expect(btnMobile).toBeDisabled();
-    await expect(btnComplete).toBeDisabled();
+    // Download button is disabled initially
+    const btnDownload = page.locator("#btn-download");
+    await expect(btnDownload).toBeDisabled();
   });
 
-  test("converts valid stylus.json and displays statistics with active download buttons", async ({
+  test("converts valid stylus.json and displays statistics with active download button", async ({
     page,
   }) => {
     const validStylusData = JSON.stringify([
       {
+        settings: {},
+      },
+      {
+        id: 1,
         name: "Test Style",
         enabled: true,
+        installDate: 123456,
         sections: [
           {
             domains: ["example.com"],
@@ -64,33 +64,20 @@ test.describe("stylus-to-ubol converter interface", () => {
     await expect(page.locator("#stats-panel")).toBeVisible();
     await expect(page.locator("#error-panel")).toBeHidden();
 
-    // Desktop stats
-    await expect(page.locator("#desktop-domains")).toHaveText("1");
-    await expect(page.locator("#desktop-hides")).toHaveText("1");
-    await expect(page.locator("#desktop-styles")).toHaveText("1");
+    // Stats metrics
+    await expect(page.locator("#stats-domains")).toHaveText("1");
+    await expect(page.locator("#stats-hides")).toHaveText("1");
+    await expect(page.locator("#stats-styles")).toHaveText("3");
 
-    // Mobile stats
-    await expect(page.locator("#mobile-domains")).toHaveText("1");
-    await expect(page.locator("#mobile-hides")).toHaveText("2");
-    await expect(page.locator("#mobile-styles")).toHaveText("2");
+    // Download button should be enabled
+    const btnDownload = page.locator("#btn-download");
+    await expect(btnDownload).toBeEnabled();
 
-    // Complete summary
-    await expect(page.locator("#complete-summary")).toContainText("1 domains");
-
-    // Download buttons should be enabled
-    const btnDesktop = page.locator("#btn-download-desktop");
-    const btnMobile = page.locator("#btn-download-mobile");
-    const btnComplete = page.locator("#btn-download-complete");
-
-    await expect(btnDesktop).toBeEnabled();
-    await expect(btnMobile).toBeEnabled();
-    await expect(btnComplete).toBeEnabled();
-
-    // Test downloading Desktop rules
+    // Test downloading my-ubol-settings.json
     const downloadPromise = page.waitForEvent("download");
-    await btnDesktop.click();
+    await btnDownload.click();
     const download = await downloadPromise;
-    expect(download.suggestedFilename()).toBe("ubol-config-desktop.json");
+    expect(download.suggestedFilename()).toBe("my-ubol-settings.json");
   });
 
   test("displays error panel when invalid stylus JSON is uploaded", async ({
@@ -108,11 +95,11 @@ test.describe("stylus-to-ubol converter interface", () => {
     // Error panel should be visible
     await expect(page.locator("#error-panel")).toBeVisible();
     await expect(page.locator("#error-message")).toContainText(
-      "No styles or code sections found",
+      "Invalid Stylus JSON",
     );
 
-    // Stats and download buttons should be hidden/disabled
+    // Stats and download button should be hidden/disabled
     await expect(page.locator("#stats-panel")).toBeHidden();
-    await expect(page.locator("#btn-download-desktop")).toBeDisabled();
+    await expect(page.locator("#btn-download")).toBeDisabled();
   });
 });

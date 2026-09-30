@@ -32,7 +32,6 @@
     "typecheck": "tsc -b"
   },
   "dependencies": {
-    "@gorhill/ubo-core": "0.1.30",
     "css-tree": "3.2.1",
     "zod": "4.6.5"
   },

@@ -1,5 +1,6 @@
-import { isUbolConfig, type UbolConfig } from "./core/schema.ts";
-import { migrateStylusJsonAll } from "./core/stylus-migrator.ts";
+import { type UbolConfig } from "./schema.ts";
+import { buildUboRules } from "./converter.ts";
+import { parseStylusRules } from "./stylus-loader.ts";
 
 export interface ConversionStats {
   domainCount: number;
@@ -8,12 +9,8 @@ export interface ConversionStats {
 }
 
 export interface ConversionResult {
-  desktop: UbolConfig;
-  mobile: UbolConfig;
-  complete: UbolConfig;
-  desktopStats: ConversionStats;
-  mobileStats: ConversionStats;
-  completeStats: ConversionStats;
+  config: UbolConfig;
+  stats: ConversionStats;
 }
 
 export const computeConfigStats = (config: UbolConfig): ConversionStats => {
@@ -21,25 +18,22 @@ export const computeConfigStats = (config: UbolConfig): ConversionStats => {
   let hideRuleCount = 0;
 
   for (const [domain, selectors] of config.customFilters) {
-    const trimmedDomain = domain.trim();
-    if (trimmedDomain.length > 0) {
-      domainSet.add(trimmedDomain);
+    const trimmed = domain.trim();
+    if (trimmed.length > 0) {
+      domainSet.add(trimmed);
     }
     hideRuleCount += selectors.length;
   }
 
-  const styleRuleCount = config.sandboxFilters?.length ?? 0;
-  if (config.sandboxFilters) {
-    for (const rule of config.sandboxFilters) {
-      const hashIdx = rule.indexOf("##");
-      if (hashIdx !== -1) {
-        const domainPart = rule.slice(0, hashIdx).trim();
-        if (domainPart.length > 0) {
-          for (const token of domainPart.split(",")) {
-            const trimmed = token.trim();
-            if (trimmed.length > 0) {
-              domainSet.add(trimmed);
-            }
+  for (const rule of config.sandboxFilters) {
+    const hashIdx = rule.indexOf("##");
+    if (hashIdx !== -1) {
+      const domainPart = rule.slice(0, hashIdx).trim();
+      if (domainPart.length > 0) {
+        for (const token of domainPart.split(",")) {
+          const trimmed = token.trim();
+          if (trimmed.length > 0) {
+            domainSet.add(trimmed);
           }
         }
       }
@@ -49,72 +43,8 @@ export const computeConfigStats = (config: UbolConfig): ConversionStats => {
   return {
     domainCount: domainSet.size,
     hideRuleCount,
-    styleRuleCount,
+    styleRuleCount: config.sandboxFilters.length,
   };
-};
-
-export const validateStylusData = (parsed: unknown): void => {
-  if (parsed === null || typeof parsed !== "object") {
-    throw new Error(
-      "Invalid Stylus JSON: Expected a JSON object or array of styles.",
-    );
-  }
-
-  if (isUbolConfig(parsed)) {
-    return;
-  }
-
-  if ("userResources" in parsed) {
-    return;
-  }
-
-  let styleCount = 0;
-  let sectionCount = 0;
-
-  interface StyleCandidate {
-    sections?: unknown[];
-  }
-
-  if (Array.isArray(parsed)) {
-    for (const item of parsed) {
-      if (item && typeof item === "object") {
-        styleCount++;
-        const candidate = item as StyleCandidate;
-        if (Array.isArray(candidate.sections)) {
-          sectionCount += candidate.sections.length;
-        }
-      }
-    }
-  } else if (
-    "styles" in parsed &&
-    Array.isArray((parsed as { styles: unknown[] }).styles)
-  ) {
-    const candidateList = (parsed as { styles: unknown[] }).styles;
-    for (const item of candidateList) {
-      if (item && typeof item === "object") {
-        styleCount++;
-        const candidate = item as StyleCandidate;
-        if (Array.isArray(candidate.sections)) {
-          sectionCount += candidate.sections.length;
-        }
-      }
-    }
-  } else if (
-    "sections" in parsed &&
-    Array.isArray((parsed as StyleCandidate).sections)
-  ) {
-    const sections = (parsed as StyleCandidate).sections;
-    if (sections) {
-      styleCount = 1;
-      sectionCount = sections.length;
-    }
-  }
-
-  if (styleCount === 0 || sectionCount === 0) {
-    throw new Error(
-      "Invalid Stylus JSON: No styles or code sections found in the uploaded file.",
-    );
-  }
 };
 
 export const convertStylusContent = (rawText: string): ConversionResult => {
@@ -133,22 +63,26 @@ export const convertStylusContent = (rawText: string): ConversionResult => {
     );
   }
 
-  validateStylusData(parsed);
+  let rules;
+  try {
+    rules = parseStylusRules(parsed);
+  } catch (err) {
+    throw new Error(
+      `Invalid Stylus JSON: ${err instanceof Error ? err.message : String(err)}`,
+      { cause: err },
+    );
+  }
 
-  const configs = migrateStylusJsonAll(parsed);
+  if (rules.length === 0) {
+    throw new Error(
+      "Invalid Stylus JSON: No styles or code sections found in the uploaded file.",
+    );
+  }
 
-  const desktopStats = computeConfigStats(configs.desktop);
-  const mobileStats = computeConfigStats(configs.mobile);
-  const completeStats = computeConfigStats(configs.complete);
+  const config = buildUboRules(rules);
+  const stats = computeConfigStats(config);
 
-  return {
-    desktop: configs.desktop,
-    mobile: configs.mobile,
-    complete: configs.complete,
-    desktopStats,
-    mobileStats,
-    completeStats,
-  };
+  return { config, stats };
 };
 
 export const triggerDownload = (filename: string, content: string): void => {
@@ -172,98 +106,63 @@ export const setupConverterApp = (): void => {
   const fileStatus = document.getElementById("file-status");
   const fileName = document.getElementById("file-name");
   const statsPanel = document.getElementById("stats-panel");
+  const statsDomains = document.getElementById("stats-domains");
+  const statsHides = document.getElementById("stats-hides");
+  const statsStyles = document.getElementById("stats-styles");
+  const btnDownload = document.getElementById(
+    "btn-download",
+  ) as HTMLButtonElement | null;
   const errorPanel = document.getElementById("error-panel");
   const errorMessage = document.getElementById("error-message");
 
-  const desktopDomains = document.getElementById("desktop-domains");
-  const desktopHides = document.getElementById("desktop-hides");
-  const desktopStyles = document.getElementById("desktop-styles");
+  let currentConfig: UbolConfig | null = null;
 
-  const mobileDomains = document.getElementById("mobile-domains");
-  const mobileHides = document.getElementById("mobile-hides");
-  const mobileStyles = document.getElementById("mobile-styles");
-
-  const completeSummary = document.getElementById("complete-summary");
-
-  const btnDownloadDesktop = document.getElementById(
-    "btn-download-desktop",
-  ) as HTMLButtonElement | null;
-  const btnDownloadMobile = document.getElementById(
-    "btn-download-mobile",
-  ) as HTMLButtonElement | null;
-  const btnDownloadComplete = document.getElementById(
-    "btn-download-complete",
-  ) as HTMLButtonElement | null;
-
-  let currentResult: ConversionResult | null = null;
-
-  const setDownloadButtonsState = (enabled: boolean): void => {
-    const buttons = [
-      btnDownloadDesktop,
-      btnDownloadMobile,
-      btnDownloadComplete,
-    ];
-    for (const btn of buttons) {
-      if (btn) {
-        btn.disabled = !enabled;
-        if (enabled) {
-          btn.classList.remove("disabled");
-        } else {
-          btn.classList.add("disabled");
-        }
+  const setDownloadButtonState = (enabled: boolean): void => {
+    if (btnDownload !== null) {
+      btnDownload.disabled = !enabled;
+      if (enabled) {
+        btnDownload.classList.remove("disabled");
+      } else {
+        btnDownload.classList.add("disabled");
       }
     }
   };
 
   const showError = (err: unknown): void => {
-    currentResult = null;
-    setDownloadButtonsState(false);
+    currentConfig = null;
+    setDownloadButtonState(false);
 
-    if (statsPanel) statsPanel.hidden = true;
-    if (fileStatus) fileStatus.hidden = true;
+    if (statsPanel !== null) statsPanel.hidden = true;
+    if (fileStatus !== null) fileStatus.hidden = true;
 
     const message = err instanceof Error ? err.message : String(err);
-    if (errorMessage) {
+    if (errorMessage !== null) {
       errorMessage.textContent = message;
     }
-    if (errorPanel) {
+    if (errorPanel !== null) {
       errorPanel.hidden = false;
     }
   };
 
   const showSuccess = (filename: string, result: ConversionResult): void => {
-    currentResult = result;
+    currentConfig = result.config;
 
-    if (errorPanel) errorPanel.hidden = true;
-    if (fileName) fileName.textContent = filename;
-    if (fileStatus) fileStatus.hidden = false;
+    if (errorPanel !== null) errorPanel.hidden = true;
+    if (fileName !== null) fileName.textContent = filename;
+    if (fileStatus !== null) fileStatus.hidden = false;
 
-    if (desktopDomains) {
-      desktopDomains.textContent = String(result.desktopStats.domainCount);
+    if (statsDomains !== null) {
+      statsDomains.textContent = String(result.stats.domainCount);
     }
-    if (desktopHides) {
-      desktopHides.textContent = String(result.desktopStats.hideRuleCount);
+    if (statsHides !== null) {
+      statsHides.textContent = String(result.stats.hideRuleCount);
     }
-    if (desktopStyles) {
-      desktopStyles.textContent = String(result.desktopStats.styleRuleCount);
-    }
-
-    if (mobileDomains) {
-      mobileDomains.textContent = String(result.mobileStats.domainCount);
-    }
-    if (mobileHides) {
-      mobileHides.textContent = String(result.mobileStats.hideRuleCount);
-    }
-    if (mobileStyles) {
-      mobileStyles.textContent = String(result.mobileStats.styleRuleCount);
+    if (statsStyles !== null) {
+      statsStyles.textContent = String(result.stats.styleRuleCount);
     }
 
-    if (completeSummary) {
-      completeSummary.textContent = `${String(result.completeStats.domainCount)} domains, ${String(result.completeStats.hideRuleCount)} hide rules, ${String(result.completeStats.styleRuleCount)} style rules`;
-    }
-
-    if (statsPanel) statsPanel.hidden = false;
-    setDownloadButtonsState(true);
+    if (statsPanel !== null) statsPanel.hidden = false;
+    setDownloadButtonState(true);
   };
 
   const processFile = (file: File): void => {
@@ -314,7 +213,7 @@ export const setupConverterApp = (): void => {
     e.preventDefault();
     dropzone.classList.remove("dragover");
     const file = e.dataTransfer?.files[0];
-    if (file) {
+    if (file !== undefined) {
       processFile(file);
     }
   });
@@ -322,29 +221,17 @@ export const setupConverterApp = (): void => {
   // File input change handler
   fileInput?.addEventListener("change", () => {
     const file = fileInput.files?.[0];
-    if (file) {
+    if (file !== undefined) {
       processFile(file);
     }
     fileInput.value = "";
   });
 
-  // Download button handlers
-  btnDownloadDesktop?.addEventListener("click", () => {
-    if (!currentResult) return;
-    const jsonStr = JSON.stringify(currentResult.desktop, null, 2);
-    triggerDownload("ubol-config-desktop.json", jsonStr);
-  });
-
-  btnDownloadMobile?.addEventListener("click", () => {
-    if (!currentResult) return;
-    const jsonStr = JSON.stringify(currentResult.mobile, null, 2);
-    triggerDownload("ubol-config-mobile.json", jsonStr);
-  });
-
-  btnDownloadComplete?.addEventListener("click", () => {
-    if (!currentResult) return;
-    const jsonStr = JSON.stringify(currentResult.complete, null, 2);
-    triggerDownload("ubol-config.json", jsonStr);
+  // Download button handler
+  btnDownload?.addEventListener("click", () => {
+    if (currentConfig === null) return;
+    const jsonStr = JSON.stringify(currentConfig, null, 2);
+    triggerDownload("my-ubol-settings.json", jsonStr);
   });
 };
 
