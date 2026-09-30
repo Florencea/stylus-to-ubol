@@ -46,18 +46,10 @@ export interface StylusRule {
   code: string;
 }
 
-interface UbolFilteringModes {
-  none: string[];
-  basic: string[];
-  optimal: string[];
-  complete: string[];
-}
-
 export interface UbolConfig {
-  version: string;
-  filteringModes: UbolFilteringModes;
   customFilters: [string, string[]][];
   sandboxFilters: string[];
+  [key: string]: unknown;
 }
 
 export interface ConversionStats {
@@ -131,7 +123,10 @@ export const splitSelectorAndPseudoElement = (
   return { baseSelector, pseudoElement };
 };
 
-export const buildUboRules = (rules: StylusRule[]): UbolConfig => {
+export const buildUboRules = (
+  rules: StylusRule[],
+  baseConfig?: Record<string, unknown> | null,
+): UbolConfig => {
   const sandboxFilters: string[] = [];
   const customFiltersMap = new Map<string, string[]>();
 
@@ -217,6 +212,16 @@ export const buildUboRules = (rules: StylusRule[]): UbolConfig => {
     });
   }
 
+  const customFilters: [string, string[]][] = Array.from(customFiltersMap);
+
+  if (baseConfig !== undefined && baseConfig !== null) {
+    return {
+      ...baseConfig,
+      customFilters,
+      sandboxFilters,
+    };
+  }
+
   return {
     version: "2026.920.1710",
     filteringModes: {
@@ -225,7 +230,7 @@ export const buildUboRules = (rules: StylusRule[]): UbolConfig => {
       optimal: ["all-urls"],
       complete: [],
     },
-    customFilters: Array.from(customFiltersMap),
+    customFilters,
     sandboxFilters,
   };
 };
@@ -268,7 +273,37 @@ export const computeConfigStats = (config: UbolConfig): ConversionStats => {
   };
 };
 
-export const compileStylus = (rawText: string): ConversionResult => {
+export const parseUbolBaseConfig = (
+  rawBaseText: string,
+): Record<string, unknown> => {
+  const trimmed = rawBaseText.trim();
+  if (trimmed.length === 0) {
+    throw new Error("Uploaded uBlock config file is empty.");
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch (err) {
+    throw new Error(
+      `Failed to parse uBlock config JSON: ${err instanceof Error ? err.message : String(err)}`,
+      { cause: err },
+    );
+  }
+
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new Error(
+      "Invalid uBlock config JSON: Expected a JSON object configuration.",
+    );
+  }
+
+  return parsed as Record<string, unknown>;
+};
+
+export const compileStylus = (
+  rawText: string,
+  baseConfigInput?: string | Record<string, unknown> | null,
+): ConversionResult => {
   const trimmed = rawText.trim();
   if (trimmed.length === 0) {
     throw new Error("Uploaded file is empty.");
@@ -300,7 +335,22 @@ export const compileStylus = (rawText: string): ConversionResult => {
     );
   }
 
-  const config = buildUboRules(rules);
+  let resolvedBaseConfig: Record<string, unknown> | null = null;
+  if (typeof baseConfigInput === "string") {
+    const baseTrimmed = baseConfigInput.trim();
+    if (baseTrimmed.length > 0) {
+      resolvedBaseConfig = parseUbolBaseConfig(baseTrimmed);
+    }
+  } else if (typeof baseConfigInput === "object" && baseConfigInput !== null) {
+    if (Array.isArray(baseConfigInput)) {
+      throw new Error(
+        "Invalid uBlock config JSON: Expected a JSON object configuration.",
+      );
+    }
+    resolvedBaseConfig = baseConfigInput;
+  }
+
+  const config = buildUboRules(rules, resolvedBaseConfig);
   const stats = computeConfigStats(config);
 
   return { config, stats };

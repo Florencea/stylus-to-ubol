@@ -1,5 +1,6 @@
 import {
   compileStylus,
+  parseUbolBaseConfig,
   type ConversionResult,
   type UbolConfig,
 } from "./compiler.ts";
@@ -17,6 +18,7 @@ export const triggerDownload = (filename: string, content: string): void => {
 };
 
 export const setupConverterApp = (): void => {
+  // Stylus upload elements
   const dropzone = document.getElementById("stylus-dropzone");
   const fileInput = document.getElementById(
     "stylus-file-input",
@@ -24,16 +26,37 @@ export const setupConverterApp = (): void => {
   const uploadBtn = document.getElementById("btn-upload-stylus");
   const fileStatus = document.getElementById("file-status");
   const fileName = document.getElementById("file-name");
+
+  // Base config upload elements
+  const baseDropzone = document.getElementById("base-dropzone");
+  const baseFileInput = document.getElementById(
+    "base-file-input",
+  ) as HTMLInputElement | null;
+  const baseUploadBtn = document.getElementById("btn-upload-base");
+  const baseFileStatus = document.getElementById("base-file-status");
+  const baseFileName = document.getElementById("base-file-name");
+  const btnClearBase = document.getElementById(
+    "btn-clear-base",
+  ) as HTMLButtonElement | null;
+
+  // Stats elements
   const statsPanel = document.getElementById("stats-panel");
   const statsDomains = document.getElementById("stats-domains");
   const statsHides = document.getElementById("stats-hides");
   const statsStyles = document.getElementById("stats-styles");
+  const statsBaseStatus = document.getElementById("stats-base-status");
+
+  // Download & error elements
   const btnDownload = document.getElementById(
     "btn-download",
   ) as HTMLButtonElement | null;
   const errorPanel = document.getElementById("error-panel");
   const errorMessage = document.getElementById("error-message");
 
+  let currentRawStylus: string | null = null;
+  let currentStylusName: string | null = null;
+  let currentRawBaseConfig: string | null = null;
+  let currentBaseConfigName: string | null = null;
   let currentConfig: UbolConfig | null = null;
 
   const setDownloadButtonState = (enabled: boolean): void => {
@@ -52,7 +75,6 @@ export const setupConverterApp = (): void => {
     setDownloadButtonState(false);
 
     if (statsPanel !== null) statsPanel.hidden = true;
-    if (fileStatus !== null) fileStatus.hidden = true;
 
     const message = err instanceof Error ? err.message : String(err);
     if (errorMessage !== null) {
@@ -79,17 +101,41 @@ export const setupConverterApp = (): void => {
     if (statsStyles !== null) {
       statsStyles.textContent = String(result.stats.styleRuleCount);
     }
+    if (statsBaseStatus !== null) {
+      statsBaseStatus.textContent =
+        currentBaseConfigName !== null
+          ? `Merged (${currentBaseConfigName})`
+          : "Default";
+    }
 
     if (statsPanel !== null) statsPanel.hidden = false;
     setDownloadButtonState(true);
   };
 
-  const processFile = (file: File): void => {
+  const recompile = (): void => {
+    if (currentRawStylus === null || currentStylusName === null) {
+      currentConfig = null;
+      setDownloadButtonState(false);
+      if (statsPanel !== null) statsPanel.hidden = true;
+      return;
+    }
+
+    try {
+      const result = compileStylus(currentRawStylus, currentRawBaseConfig);
+      showSuccess(currentStylusName, result);
+    } catch (err) {
+      showError(err);
+    }
+  };
+
+  const processStylusFile = (file: File): void => {
     file
       .text()
       .then((rawText) => {
         try {
-          const result = compileStylus(rawText);
+          const result = compileStylus(rawText, currentRawBaseConfig);
+          currentRawStylus = rawText;
+          currentStylusName = file.name;
           showSuccess(file.name, result);
         } catch (err) {
           showError(err);
@@ -100,13 +146,59 @@ export const setupConverterApp = (): void => {
       });
   };
 
-  // Upload button click triggers file input
+  const processBaseConfigFile = (file: File): void => {
+    file
+      .text()
+      .then((rawText) => {
+        try {
+          parseUbolBaseConfig(rawText);
+        } catch (err) {
+          showError(err);
+          return;
+        }
+
+        currentRawBaseConfig = rawText;
+        currentBaseConfigName = file.name;
+
+        if (baseFileName !== null) {
+          baseFileName.textContent = file.name;
+        }
+        if (baseFileStatus !== null) {
+          baseFileStatus.hidden = false;
+        }
+
+        if (currentRawStylus !== null) {
+          recompile();
+        }
+      })
+      .catch((err: unknown) => {
+        showError(err);
+      });
+  };
+
+  const clearBaseConfig = (): void => {
+    currentRawBaseConfig = null;
+    currentBaseConfigName = null;
+
+    if (baseFileStatus !== null) {
+      baseFileStatus.hidden = true;
+    }
+    if (baseFileInput !== null) {
+      baseFileInput.value = "";
+    }
+
+    if (currentRawStylus !== null) {
+      recompile();
+    }
+  };
+
+  // Stylus upload button click triggers file input
   uploadBtn?.addEventListener("click", (e) => {
     e.stopPropagation();
     fileInput?.click();
   });
 
-  // Dropzone click & keyboard access
+  // Stylus dropzone click & keyboard access
   dropzone?.addEventListener("click", () => {
     fileInput?.click();
   });
@@ -118,7 +210,7 @@ export const setupConverterApp = (): void => {
     }
   });
 
-  // Drag and drop handlers
+  // Stylus drag and drop handlers
   dropzone?.addEventListener("dragover", (e) => {
     e.preventDefault();
     dropzone.classList.add("dragover");
@@ -133,17 +225,69 @@ export const setupConverterApp = (): void => {
     dropzone.classList.remove("dragover");
     const file = e.dataTransfer?.files[0];
     if (file !== undefined) {
-      processFile(file);
+      processStylusFile(file);
     }
   });
 
-  // File input change handler
+  // Stylus file input change handler
   fileInput?.addEventListener("change", () => {
     const file = fileInput.files?.[0];
     if (file !== undefined) {
-      processFile(file);
+      processStylusFile(file);
     }
     fileInput.value = "";
+  });
+
+  // Base config upload button click triggers file input
+  baseUploadBtn?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    baseFileInput?.click();
+  });
+
+  // Base dropzone click & keyboard access
+  baseDropzone?.addEventListener("click", () => {
+    baseFileInput?.click();
+  });
+
+  baseDropzone?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      baseFileInput?.click();
+    }
+  });
+
+  // Base drag and drop handlers
+  baseDropzone?.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    baseDropzone.classList.add("dragover");
+  });
+
+  baseDropzone?.addEventListener("dragleave", () => {
+    baseDropzone.classList.remove("dragover");
+  });
+
+  baseDropzone?.addEventListener("drop", (e) => {
+    e.preventDefault();
+    baseDropzone.classList.remove("dragover");
+    const file = e.dataTransfer?.files[0];
+    if (file !== undefined) {
+      processBaseConfigFile(file);
+    }
+  });
+
+  // Base file input change handler
+  baseFileInput?.addEventListener("change", () => {
+    const file = baseFileInput.files?.[0];
+    if (file !== undefined) {
+      processBaseConfigFile(file);
+    }
+    baseFileInput.value = "";
+  });
+
+  // Base config clear button handler
+  btnClearBase?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    clearBaseConfig();
   });
 
   // Download button handler

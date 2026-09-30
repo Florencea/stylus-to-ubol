@@ -16,11 +16,13 @@ A serverless, pure client-side one-way compiler converting Stylus export JSON in
 
 2. **Pure Static Client-Side Interface (`index.html`)**
    - Clean, intuitive centered card interface for uploading `stylus.json` via file selection or drag-and-drop.
+   - Optional base uBlock configuration upload (`ublock-config.json` or `my-ubol-settings.json`) allowing users to preserve custom settings while replacing filter rules.
    - Instant in-browser AST transformation and rule compilation.
    - Real-time conversion statistics display:
      - **Target Domains**: Unique hostnames targeted by the rules.
      - **Hide Rules**: Pure cosmetic hide selectors (`display: none !important`).
      - **Style Rules**: Declarative style injection rules (`:style(...)`).
+     - **Base Settings**: Status indicator reflecting merged custom config or default configuration.
    - Single one-click download button for `my-ubol-settings.json`.
    - Explicit error alert panel showing actionable syntax and structure details if an invalid file is uploaded.
 

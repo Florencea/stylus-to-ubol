@@ -22,34 +22,95 @@
         </header>
 
         <section class="action-section">
-          <!-- Dropzone for stylus.json upload -->
-          <div
-            class="dropzone"
-            id="stylus-dropzone"
-            tabindex="0"
-            role="button"
-            aria-label="Upload Stylus JSON export file"
-          >
-            <input
-              type="file"
-              id="stylus-file-input"
-              accept=".json,application/json"
-              style="display: none"
-            />
-            <button
-              type="button"
-              class="btn btn-secondary"
-              id="btn-upload-stylus"
+          <!-- Stylus JSON Input Section (Required) -->
+          <div class="input-group">
+            <div class="input-header">
+              <span class="input-label">Stylus Export File</span>
+              <span class="badge-tag tag-required">Required</span>
+            </div>
+            <!-- Dropzone for stylus.json upload -->
+            <div
+              class="dropzone"
+              id="stylus-dropzone"
+              tabindex="0"
+              role="button"
+              aria-label="Upload Stylus JSON export file"
             >
-              Select stylus.json
-            </button>
-            <span class="drop-hint">or drop stylus.json export file here</span>
+              <input
+                type="file"
+                id="stylus-file-input"
+                accept=".json,application/json"
+                style="display: none"
+              />
+              <button
+                type="button"
+                class="btn btn-secondary"
+                id="btn-upload-stylus"
+              >
+                Select stylus.json
+              </button>
+              <span class="drop-hint"
+                >or drop stylus.json export file here</span
+              >
+            </div>
+
+            <!-- File Info Status Bar -->
+            <div class="file-status" id="file-status" hidden>
+              <span class="file-name" id="file-name"></span>
+              <span class="file-badge">Ready</span>
+            </div>
           </div>
 
-          <!-- File Info Status Bar -->
-          <div class="file-status" id="file-status" hidden>
-            <span class="file-name" id="file-name"></span>
-            <span class="file-badge">Ready</span>
+          <!-- Base uBlock Config Input Section (Optional) -->
+          <div class="input-group">
+            <div class="input-header">
+              <span class="input-label">Existing uBlock Settings</span>
+              <span class="badge-tag tag-optional">Optional</span>
+            </div>
+            <!-- Dropzone for ublock-config.json upload -->
+            <div
+              class="dropzone dropzone-compact"
+              id="base-dropzone"
+              tabindex="0"
+              role="button"
+              aria-label="Upload optional existing uBlock config JSON file"
+            >
+              <input
+                type="file"
+                id="base-file-input"
+                accept=".json,application/json"
+                style="display: none"
+              />
+              <button
+                type="button"
+                class="btn btn-secondary"
+                id="btn-upload-base"
+              >
+                Select ublock-config.json
+              </button>
+              <span class="drop-hint"
+                >or drop ublock-config.json / my-ubol-settings.json</span
+              >
+            </div>
+
+            <!-- Base File Info Status Bar -->
+            <div class="file-status base-status" id="base-file-status" hidden>
+              <div class="base-status-info">
+                <span class="file-name" id="base-file-name"></span>
+                <span class="file-badge badge-merged"
+                  >Base Settings Loaded</span
+                >
+              </div>
+              <button
+                type="button"
+                class="btn-clear"
+                id="btn-clear-base"
+                title="Remove base config"
+                aria-label="Remove base config"
+              >
+                Remove
+              </button>
+            </div>
           </div>
 
           <!-- Statistics Panel -->
@@ -70,6 +131,12 @@
                 <div class="metric">
                   <span class="metric-label">Style Rules</span>
                   <span class="metric-value" id="stats-styles">0</span>
+                </div>
+                <div class="metric">
+                  <span class="metric-label">Base Settings</span>
+                  <span class="metric-value" id="stats-base-status"
+                    >Default</span
+                  >
                 </div>
               </div>
             </div>
