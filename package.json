@@ -5,23 +5,18 @@
   "type": "module",
   "scripts": {
     "agent:lint:ci": "actionlint",
-    "agent:lint:fix": "vp check --fix",
     "agent:test:e2e": "vp test run --project e2e --reporter=tap-flat --no-color",
     "agent:test:unit": "vp test run --project unit --reporter=tap-flat --no-color",
     "agent:verify:gate": "vpr agent:verify:unit && vp build && vpr agent:test:e2e",
-    "agent:verify:inner": "vp check",
+    "agent:verify:inner": "vpr typecheck && vp check",
     "agent:verify:unit": "vpr agent:verify:inner && vpr agent:test:unit",
-    "build": "vp build",
-    "check": "vp check && vpr check:deadcode && vp test run && vp build",
     "check:deadcode": "knip",
-    "dev": "vp dev",
-    "preview": "vp preview",
-    "test": "vp test run",
+    "lint:ci": "actionlint",
     "test:e2e": "vp test run --project e2e",
     "test:setup": "playwright install chromium",
     "test:unit": "vp test run --project unit",
     "typecheck": "tsc -b --pretty false",
-    "verify": "vp check && vpr check:deadcode && vp test run && vp build"
+    "verify": "vpr agent:verify:inner && vpr check:deadcode && vp test run && vp build"
   },
   "dependencies": {
     "css-tree": "3.2.1",
