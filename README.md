@@ -41,9 +41,7 @@ export const UbolConfigSchema = z.object({
     optimal: z.array(z.string()).default([]),
     complete: z.array(z.string()).default([]),
   }),
-  customFilters: z.array(
-    z.tuple([z.string().min(1), z.array(z.string().min(1))]),
-  ),
+  customFilters: z.array(z.tuple([z.string().min(1), z.array(z.string().min(1))])),
   sandboxFilters: z.array(z.string()),
 });
 

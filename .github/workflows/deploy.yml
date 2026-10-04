@@ -33,20 +33,20 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
-      - name: Setup Node.js (via package.json engines)
-        uses: actions/setup-node@v7
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
         with:
           node-version-file: package.json
-          cache: npm
+          cache: true
 
       - name: Install dependencies
-        run: npm ci
+        run: vp install
 
       - name: Verify code integrity
-        run: npm run agent:verify:unit
+        run: vp run agent:verify:unit
 
       - name: Build production bundle
-        run: npm run build
+        run: vp build
 
       - name: Setup Pages
         uses: actions/configure-pages@v6

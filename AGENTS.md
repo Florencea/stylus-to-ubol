@@ -1,77 +1,67 @@
+<!--VITE PLUS START-->
+
+## Vite+ Guidelines
+
+This project uses Vite+ to manage development tools. Always use `vp` (or `vpr` shorthand for `vp run`) to run commands:
+
+- `vpr <script>` (or `vp run <script>`): Run scripts from `package.json`
+- `vp install`: Install dependencies
+- `vp update`: Update dependencies
+- `vp test`: Run Vitest tests
+- `vp build`: Build production bundles
+- `vp check`: Run linter, typecheck, format checks
+- `vp fmt`: Run formatter
+- `vp lint`: Run linter
+
+<!--VITE PLUS END-->
+
 # Agent Development Guidelines
 
 Guidelines for AI agents and human contributors working on this repository.
 
-## 1. Project Overview & Hard Rules
+## 1. Architecture Map
 
-- **Unidirectional Data Flow**: Stylus JSON export is the sole Single Source of Truth (SSOT). Conversion is strictly one-way: Stylus JSON compiles to uBOL JSON configuration (`my-ubol-settings.json`). There is no reverse conversion back to Stylus.
-- **Zero CSS File Persistence**: Do not persist intermediate `.css` file assets to disk. All conversions are performed in memory. The sole persistent data asset is uBOL settings JSON.
-- **In-Memory AST Architecture**: All AST parsing and style transformations run in memory via `css-tree`.
-- **Rules Splitting Architecture**:
-  - `customFilters`: Dedicated to pure cosmetic hide selectors grouped by domain: `[domain, [selector1, selector2, ...]]`.
-  - `sandboxFilters`: Dedicated to `:style(...)` style injection rules stored as full uBO syntax strings: `domain##selector:style(...)`.
-  - Global generic rules (empty domains or `*`) use `*` domain in `customFilters` and `*##` prefix in `sandboxFilters`.
-- **Procedural Rules & @media Handling**:
-  - Declarations are serialized into `:style(...)` rules.
-  - Pure `display: none !important` rules outside coarse pointer queries route to `customFilters`.
-  - Nested `@media` scopes compile to `:matches-media(...)` suffixes.
-  - Pseudo-elements are separated to ensure `:matches-media` is placed before pseudo-elements.
-  - Declarations preserve the original CSS `!important` state.
-- **Language & Style Constraints**:
-  - Agent responses to the user in chat must use Traditional Chinese (繁體中文).
-  - All other project artifacts—including source code, comments, UI text, documentation, commit messages, and tests—must use concise English.
-  - Do not use unnecessary emojis across the codebase or UI.
-- **Deployment Target**:
-  - GitHub Pages via automated workflow (`.github/workflows/deploy.yml`).
-  - Vite base path must remain relative (`base: './'`) for path portability.
+| Layer         | Path              | Responsibility                                            |
+| :------------ | :---------------- | :-------------------------------------------------------- |
+| **Compiler**  | `src/compiler.ts` | AST parser, rules splitting, CSS serialization            |
+| **App Entry** | `src/main.ts`     | Client-side converter controller & DOM interactions       |
+| **UI Styles** | `src/style.css`   | Minimalist converter UI stylesheet                        |
+| **Tests**     | `test/`           | Vitest dual-project tests (in-memory unit & Chromium e2e) |
+| **Rules**     | `.agents/rules/`  | Domain-specific modular rules                             |
 
-## 2. Frictionless Agent Scripts
+---
 
-Match commands against the pre-approved whitelist in `package.json`:
+## 2. Core SSOT & Invariants
 
-- `npm run agent:verify:gate`: Full gatekeeper verification (unit tests, build, E2E tests).
-- `npm run agent:verify:unit`: Typecheck, lint, and unit tests.
-- `npm run agent:verify:inner`: Typecheck and lint.
-- `npm run agent:typecheck`: Typecheck without color formatting.
-- `npm run agent:lint`: ESLint with zero-warning threshold.
-- `npm run agent:lint:fix`: ESLint auto-fix.
-- `npm run agent:format`: Prettier format.
-- `npm run agent:test:unit`: Vitest run with TAP-flat reporter.
-- `npm run agent:test:e2e`: Playwright E2E tests with line reporter.
-- `npm run agent:lint:ci`: Actionlint check on workflow YAML files.
+- **Single Source of Truth**: Stylus JSON export is the sole Single Source of Truth (SSOT). Conversion is strictly one-way: Stylus JSON compiles to uBOL JSON (`my-ubol-settings.json`).
+- **Zero CSS File Persistence**: Do not persist intermediate `.css` file assets to disk. All conversions are performed in memory.
+- **Rules Splitting SSOT**: `customFilters` for pure cosmetic hide rules; `sandboxFilters` for `:style(...)` style injections.
+- **Domain Rules**: Path-specific rules live under `.agents/rules/` (`compiler`, `testing`, `ci-workflows`) and activate via file globbing.
 
-## 3. Verification Protocol
+---
 
-Always execute verification before concluding any task:
+## 3. Frictionless Execution (Whitelist-First)
 
-```bash
-# Complete verification suite
-npm run check
-```
+Prioritize `vpr agent:*` commands matching Antigravity's whitelist:
 
-The verification loop includes:
+- **Gate**: `vpr agent:verify:gate` (unit -> build -> e2e) or `vpr verify`
+- **Inner Loop**: `vpr agent:verify:inner` (`vp check`)
+- **Unit Tests**: `vpr agent:test:unit` (`vp test run --project unit --reporter=tap-flat --no-color`)
+- **E2E Tests**: `vpr agent:test:e2e` (`vp test run --project e2e --reporter=tap-flat --no-color`)
+- **Lint & Fix**: `vpr agent:lint:fix` (`vp check --fix`)
+- **CI Lint**: `vpr agent:lint:ci` (`actionlint` 0 errors/warnings)
+- **Task Caching**: Scripts executed via `vpr` leverage Vite Task caching (`run.cache: { scripts: true }`). Unmodified steps replay in milliseconds. Use `vpr --last-details` to inspect cache hit status or `vp cache clean` / `vpr --no-cache` to force clean execution.
 
-- TypeScript check: `npm run typecheck` (`tsc -b`)
-- ESLint check: `npm run lint` (`eslint`)
-- Formatting check: `npm run format:check` (`prettier . --check`)
-- Dead code analysis: `npm run check:deadcode` (`knip`)
-- Unit tests: `npm run test` (`vitest run`)
-- E2E tests: `npm run test:e2e` (`playwright test`)
-- Production build: `npm run build` (`vite build`)
+---
 
-All checks must pass with zero errors and zero warnings.
+## 4. Git Workflow & Commit Restrictions
 
-## 4. Architecture & Core Modules
+- **NEVER execute `git commit` directly**: Local environment uses 1Password SSH signing; non-interactive commit fails.
+- **Protocol**: Stage changes with `git add <files>` and output `git commit -m "..."` in English for user to run locally.
 
-- `src/compiler.ts`: Unified core compiler engine (schemas, Stylus rule extraction, AST conversion via `css-tree`, statistics calculation, and `compileStylus` API).
-- `src/main.ts`: Client-side converter controller, drag & drop handler, and JSON export triggers.
-- `src/style.css`: Minimalist converter UI stylesheet.
-- `tests/compiler.test.ts`: Vitest unit tests for compiler engine and rule synthesis.
-- `tests/e2e/app.spec.ts`: Playwright end-to-end integration tests for web interface.
+---
 
-## 5. Git Workflow & Commit Restrictions
+## 5. Language & Planning Standards
 
-- **NEVER execute `git commit` directly**: Local environment uses 1Password SSH signing; running `git commit` in non-interactive/subshell will fail.
-- **Standard Protocol**:
-  1. Stage changes with `git add <files>`.
-  2. Output the complete `git commit -m "..."` command with a concise commit message in English in chat for user to review and run locally.
+- **Traditional Chinese for Plans & Responses**: All plans, walkthroughs, and chat responses must strictly be written in **Traditional Chinese (繁體中文)**.
+- **Code Artifacts**: Source code, inline comments, commit messages, and automated tests must use concise English.

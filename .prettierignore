@@ -1,6 +1,0 @@
-dist
-.cache
-.vitest
-test-results
-playwright-report
-blob-report

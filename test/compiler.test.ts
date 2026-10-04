@@ -1,5 +1,5 @@
 import { parse } from "css-tree";
-import { describe, expect, it } from "vitest";
+import { assert, describe, expect, it } from "vite-plus/test";
 import {
   buildUboRules,
   compileStylus,
@@ -13,25 +13,23 @@ describe("Compiler Engine", () => {
   describe("serializeDeclaration", () => {
     it("serializes declaration without !important when not present", () => {
       const ast = parse("div { color: red; }");
-      let serialized = "";
-      if (ast.type === "StyleSheet" && ast.children.first?.type === "Rule") {
-        const block = ast.children.first.block;
-        if (block.children.first?.type === "Declaration") {
-          serialized = serializeDeclaration(block.children.first);
-        }
-      }
+      assert(ast.type === "StyleSheet");
+      const rule = ast.children.first;
+      assert(rule?.type === "Rule");
+      const decl = rule.block.children.first;
+      assert(decl?.type === "Declaration");
+      const serialized = serializeDeclaration(decl);
       expect(serialized).toBe("color:red");
     });
 
     it("serializes declaration with !important when present", () => {
       const ast = parse("div { color: red !important; }");
-      let serialized = "";
-      if (ast.type === "StyleSheet" && ast.children.first?.type === "Rule") {
-        const block = ast.children.first.block;
-        if (block.children.first?.type === "Declaration") {
-          serialized = serializeDeclaration(block.children.first);
-        }
-      }
+      assert(ast.type === "StyleSheet");
+      const rule = ast.children.first;
+      assert(rule?.type === "Rule");
+      const decl = rule.block.children.first;
+      assert(decl?.type === "Declaration");
+      const serialized = serializeDeclaration(decl);
       expect(serialized).toBe("color:red !important");
     });
   });
@@ -39,36 +37,28 @@ describe("Compiler Engine", () => {
   describe("splitSelectorAndPseudoElement", () => {
     it("splits standard pseudo-elements from base selector", () => {
       const ast = parse(".header::before { content: ''; }");
-      if (
-        ast.type === "StyleSheet" &&
-        ast.children.first?.type === "Rule" &&
-        ast.children.first.prelude.type === "SelectorList"
-      ) {
-        const sel = ast.children.first.prelude.children.first;
-        if (sel?.type === "Selector") {
-          const { baseSelector, pseudoElement } =
-            splitSelectorAndPseudoElement(sel);
-          expect(baseSelector).toBe(".header");
-          expect(pseudoElement).toBe("::before");
-        }
-      }
+      assert(ast.type === "StyleSheet");
+      const rule = ast.children.first;
+      assert(rule?.type === "Rule");
+      assert(rule.prelude.type === "SelectorList");
+      const sel = rule.prelude.children.first;
+      assert(sel?.type === "Selector");
+      const { baseSelector, pseudoElement } = splitSelectorAndPseudoElement(sel);
+      expect(baseSelector).toBe(".header");
+      expect(pseudoElement).toBe("::before");
     });
 
     it("splits single-colon pseudo-classes acting as pseudo-elements", () => {
       const ast = parse(".btn:after { content: ''; }");
-      if (
-        ast.type === "StyleSheet" &&
-        ast.children.first?.type === "Rule" &&
-        ast.children.first.prelude.type === "SelectorList"
-      ) {
-        const sel = ast.children.first.prelude.children.first;
-        if (sel?.type === "Selector") {
-          const { baseSelector, pseudoElement } =
-            splitSelectorAndPseudoElement(sel);
-          expect(baseSelector).toBe(".btn");
-          expect(pseudoElement).toBe(":after");
-        }
-      }
+      assert(ast.type === "StyleSheet");
+      const rule = ast.children.first;
+      assert(rule?.type === "Rule");
+      assert(rule.prelude.type === "SelectorList");
+      const sel = rule.prelude.children.first;
+      assert(sel?.type === "Selector");
+      const { baseSelector, pseudoElement } = splitSelectorAndPseudoElement(sel);
+      expect(baseSelector).toBe(".btn");
+      expect(pseudoElement).toBe(":after");
     });
   });
 
@@ -134,9 +124,7 @@ describe("Compiler Engine", () => {
         },
       ];
       const config = buildUboRules(rules);
-      expect(config.sandboxFilters).toEqual([
-        'example.com##.nav::before:style(content:">")',
-      ]);
+      expect(config.sandboxFilters).toEqual(['example.com##.nav::before:style(content:">")']);
     });
   });
 
@@ -199,9 +187,7 @@ describe("Compiler Engine", () => {
 
       expect(result.config).toBeDefined();
       expect(result.config.version).toBe("2026.920.1710");
-      expect(result.config.customFilters).toEqual([
-        ["site.com", [".desktop-ad"]],
-      ]);
+      expect(result.config.customFilters).toEqual([["site.com", [".desktop-ad"]]]);
       expect(result.config.sandboxFilters).toEqual([
         "site.com##.mobile-ad:matches-media((pointer:coarse)):style(display:none !important)",
       ]);
@@ -217,9 +203,9 @@ describe("Compiler Engine", () => {
     });
 
     it("throws clear error on invalid structure without sections", () => {
-      expect(() =>
-        compileStylus(JSON.stringify([{ invalid: "data" }])),
-      ).toThrow(/Invalid Stylus JSON/);
+      expect(() => compileStylus(JSON.stringify([{ invalid: "data" }]))).toThrow(
+        /Invalid Stylus JSON/,
+      );
     });
   });
 });

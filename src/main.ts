@@ -20,24 +20,18 @@ export const triggerDownload = (filename: string, content: string): void => {
 export const setupConverterApp = (): void => {
   // Stylus upload elements
   const dropzone = document.getElementById("stylus-dropzone");
-  const fileInput = document.getElementById(
-    "stylus-file-input",
-  ) as HTMLInputElement | null;
+  const fileInput = document.querySelector<HTMLInputElement>("#stylus-file-input");
   const uploadBtn = document.getElementById("btn-upload-stylus");
   const fileStatus = document.getElementById("file-status");
   const fileName = document.getElementById("file-name");
 
   // Base config upload elements
   const baseDropzone = document.getElementById("base-dropzone");
-  const baseFileInput = document.getElementById(
-    "base-file-input",
-  ) as HTMLInputElement | null;
+  const baseFileInput = document.querySelector<HTMLInputElement>("#base-file-input");
   const baseUploadBtn = document.getElementById("btn-upload-base");
   const baseFileStatus = document.getElementById("base-file-status");
   const baseFileName = document.getElementById("base-file-name");
-  const btnClearBase = document.getElementById(
-    "btn-clear-base",
-  ) as HTMLButtonElement | null;
+  const btnClearBase = document.querySelector<HTMLButtonElement>("#btn-clear-base");
 
   // Stats elements
   const statsPanel = document.getElementById("stats-panel");
@@ -47,9 +41,7 @@ export const setupConverterApp = (): void => {
   const statsBaseStatus = document.getElementById("stats-base-status");
 
   // Download & error elements
-  const btnDownload = document.getElementById(
-    "btn-download",
-  ) as HTMLButtonElement | null;
+  const btnDownload = document.querySelector<HTMLButtonElement>("#btn-download");
   const errorPanel = document.getElementById("error-panel");
   const errorMessage = document.getElementById("error-message");
 
@@ -103,9 +95,7 @@ export const setupConverterApp = (): void => {
     }
     if (statsBaseStatus !== null) {
       statsBaseStatus.textContent =
-        currentBaseConfigName !== null
-          ? `Merged (${currentBaseConfigName})`
-          : "Default";
+        currentBaseConfigName !== null ? `Merged (${currentBaseConfigName})` : "Default";
     }
 
     if (statsPanel !== null) statsPanel.hidden = false;
@@ -128,52 +118,39 @@ export const setupConverterApp = (): void => {
     }
   };
 
-  const processStylusFile = (file: File): void => {
-    file
-      .text()
-      .then((rawText) => {
-        try {
-          const result = compileStylus(rawText, currentRawBaseConfig);
-          currentRawStylus = rawText;
-          currentStylusName = file.name;
-          showSuccess(file.name, result);
-        } catch (err) {
-          showError(err);
-        }
-      })
-      .catch((err: unknown) => {
-        showError(err);
-      });
+  const processStylusFile = async (file: File): Promise<void> => {
+    try {
+      const rawText = await file.text();
+      const result = compileStylus(rawText, currentRawBaseConfig);
+      currentRawStylus = rawText;
+      currentStylusName = file.name;
+      showSuccess(file.name, result);
+    } catch (err) {
+      showError(err);
+    }
   };
 
-  const processBaseConfigFile = (file: File): void => {
-    file
-      .text()
-      .then((rawText) => {
-        try {
-          parseUbolBaseConfig(rawText);
-        } catch (err) {
-          showError(err);
-          return;
-        }
+  const processBaseConfigFile = async (file: File): Promise<void> => {
+    try {
+      const rawText = await file.text();
+      parseUbolBaseConfig(rawText);
 
-        currentRawBaseConfig = rawText;
-        currentBaseConfigName = file.name;
+      currentRawBaseConfig = rawText;
+      currentBaseConfigName = file.name;
 
-        if (baseFileName !== null) {
-          baseFileName.textContent = file.name;
-        }
-        if (baseFileStatus !== null) {
-          baseFileStatus.hidden = false;
-        }
+      if (baseFileName !== null) {
+        baseFileName.textContent = file.name;
+      }
+      if (baseFileStatus !== null) {
+        baseFileStatus.hidden = false;
+      }
 
-        if (currentRawStylus !== null) {
-          recompile();
-        }
-      })
-      .catch((err: unknown) => {
-        showError(err);
-      });
+      if (currentRawStylus !== null) {
+        recompile();
+      }
+    } catch (err) {
+      showError(err);
+    }
   };
 
   const clearBaseConfig = (): void => {
@@ -225,7 +202,7 @@ export const setupConverterApp = (): void => {
     dropzone.classList.remove("dragover");
     const file = e.dataTransfer?.files[0];
     if (file !== undefined) {
-      processStylusFile(file);
+      void processStylusFile(file);
     }
   });
 
@@ -233,7 +210,7 @@ export const setupConverterApp = (): void => {
   fileInput?.addEventListener("change", () => {
     const file = fileInput.files?.[0];
     if (file !== undefined) {
-      processStylusFile(file);
+      void processStylusFile(file);
     }
     fileInput.value = "";
   });
@@ -271,7 +248,7 @@ export const setupConverterApp = (): void => {
     baseDropzone.classList.remove("dragover");
     const file = e.dataTransfer?.files[0];
     if (file !== undefined) {
-      processBaseConfigFile(file);
+      void processBaseConfigFile(file);
     }
   });
 
@@ -279,7 +256,7 @@ export const setupConverterApp = (): void => {
   baseFileInput?.addEventListener("change", () => {
     const file = baseFileInput.files?.[0];
     if (file !== undefined) {
-      processBaseConfigFile(file);
+      void processBaseConfigFile(file);
     }
     baseFileInput.value = "";
   });

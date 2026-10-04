@@ -1,11 +1,4 @@
-import {
-  generate,
-  parse,
-  walk,
-  type CssNode,
-  type Declaration,
-  type Selector,
-} from "css-tree";
+import { generate, parse, walk, type CssNode, type Declaration, type Selector } from "css-tree";
 import { z } from "zod";
 
 /* =========================================================================
@@ -137,11 +130,7 @@ export const buildUboRules = (
     walk(ast, {
       enter: (node: CssNode) => {
         // 1. Maintain @media Stack
-        if (
-          node.type === "Atrule" &&
-          node.name === "media" &&
-          node.prelude !== null
-        ) {
+        if (node.type === "Atrule" && node.name === "media" && node.prelude !== null) {
           const mediaQuery = generate(node.prelude).trim();
           mediaStack.push(mediaQuery);
           return;
@@ -162,9 +151,7 @@ export const buildUboRules = (
 
           // Assemble :matches-media(...)
           const mediaSuffix =
-            mediaStack.length > 0
-              ? `:matches-media(${mediaStack.join(" and ")})`
-              : "";
+            mediaStack.length > 0 ? `:matches-media(${mediaStack.join(" and ")})` : "";
 
           // 3. Expand selectors and emit rules
           if (node.prelude.type === "SelectorList") {
@@ -172,13 +159,11 @@ export const buildUboRules = (
 
             selectorList.children.forEach((selNode) => {
               if (selNode.type === "Selector") {
-                const { baseSelector, pseudoElement } =
-                  splitSelectorAndPseudoElement(selNode);
+                const { baseSelector, pseudoElement } = splitSelectorAndPseudoElement(selNode);
                 const rawSelector = generate(selNode).trim();
 
                 // Effective procedural selector (omit mediaSuffix if pseudo-element is present)
-                const effectiveMediaSuffix =
-                  pseudoElement !== "" ? "" : mediaSuffix;
+                const effectiveMediaSuffix = pseudoElement !== "" ? "" : mediaSuffix;
                 const proceduralSelector = `${baseSelector}${effectiveMediaSuffix}${pseudoElement}`;
 
                 for (const declaration of declarations) {
@@ -193,9 +178,7 @@ export const buildUboRules = (
                     }
                     selectors.push(rawSelector);
                   } else {
-                    sandboxFilters.push(
-                      `${domain}##${proceduralSelector}:style(${declaration})`,
-                    );
+                    sandboxFilters.push(`${domain}##${proceduralSelector}:style(${declaration})`);
                   }
                 }
               }
@@ -273,9 +256,7 @@ export const computeConfigStats = (config: UbolConfig): ConversionStats => {
   };
 };
 
-export const parseUbolBaseConfig = (
-  rawBaseText: string,
-): Record<string, unknown> => {
+export const parseUbolBaseConfig = (rawBaseText: string): Record<string, unknown> => {
   const trimmed = rawBaseText.trim();
   if (trimmed.length === 0) {
     throw new Error("Uploaded uBlock config file is empty.");
@@ -291,13 +272,13 @@ export const parseUbolBaseConfig = (
     );
   }
 
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    throw new Error(
-      "Invalid uBlock config JSON: Expected a JSON object configuration.",
-    );
+  const BaseConfigObjectSchema = z.record(z.string(), z.unknown());
+  const parseResult = BaseConfigObjectSchema.safeParse(parsed);
+  if (!parseResult.success) {
+    throw new Error("Invalid uBlock config JSON: Expected a JSON object configuration.");
   }
 
-  return parsed as Record<string, unknown>;
+  return parseResult.data;
 };
 
 export const compileStylus = (
@@ -313,26 +294,22 @@ export const compileStylus = (
   try {
     parsed = JSON.parse(trimmed);
   } catch (err) {
-    throw new Error(
-      `Failed to parse JSON: ${err instanceof Error ? err.message : String(err)}`,
-      { cause: err },
-    );
+    throw new Error(`Failed to parse JSON: ${err instanceof Error ? err.message : String(err)}`, {
+      cause: err,
+    });
   }
 
   let rules: StylusRule[];
   try {
     rules = parseStylusRules(parsed);
   } catch (err) {
-    throw new Error(
-      `Invalid Stylus JSON: ${err instanceof Error ? err.message : String(err)}`,
-      { cause: err },
-    );
+    throw new Error(`Invalid Stylus JSON: ${err instanceof Error ? err.message : String(err)}`, {
+      cause: err,
+    });
   }
 
   if (rules.length === 0) {
-    throw new Error(
-      "Invalid Stylus JSON: No styles or code sections found in the uploaded file.",
-    );
+    throw new Error("Invalid Stylus JSON: No styles or code sections found in the uploaded file.");
   }
 
   let resolvedBaseConfig: Record<string, unknown> | null = null;
@@ -343,9 +320,7 @@ export const compileStylus = (
     }
   } else if (typeof baseConfigInput === "object" && baseConfigInput !== null) {
     if (Array.isArray(baseConfigInput)) {
-      throw new Error(
-        "Invalid uBlock config JSON: Expected a JSON object configuration.",
-      );
+      throw new Error("Invalid uBlock config JSON: Expected a JSON object configuration.");
     }
     resolvedBaseConfig = baseConfigInput;
   }
