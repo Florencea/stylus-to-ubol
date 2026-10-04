@@ -1,6 +1,6 @@
 # stylus-to-ubol
 
-[![CI](https://github.com/Florencea/stylus-to-ubol/actions/workflows/ci.yml/badge.svg)](https://github.com/Florencea/vite-start-antd/actions/workflows/ci.yml)
+[![CI](https://github.com/Florencea/stylus-to-ubol/actions/workflows/ci.yml/badge.svg)](https://github.com/Florencea/stylus-to-ubol/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 A serverless, pure client-side one-way compiler converting Stylus export JSON into uBlock Origin Lite (uBOL) configuration JSON (`my-ubol-settings.json`).
@@ -28,24 +28,14 @@ A serverless, pure client-side one-way compiler converting Stylus export JSON in
 
 ## Architecture & Specifications
 
-### 1. Data Contract (Zod Schema)
+### 1. Data Contract
 
 ```ts
-import { z } from "zod";
-
-export const UbolConfigSchema = z.object({
-  version: z.string(),
-  filteringModes: z.object({
-    none: z.array(z.string()).default([]),
-    basic: z.array(z.string()).default([]),
-    optimal: z.array(z.string()).default([]),
-    complete: z.array(z.string()).default([]),
-  }),
-  customFilters: z.array(z.tuple([z.string().min(1), z.array(z.string().min(1))])),
-  sandboxFilters: z.array(z.string()),
-});
-
-export type UbolConfig = z.infer<typeof UbolConfigSchema>;
+export interface UbolConfig {
+  customFilters: [string, string[]][];
+  sandboxFilters: string[];
+  [key: string]: unknown;
+}
 ```
 
 - **`customFilters`**: Pure cosmetic hide rules, grouped by hostname: `[domain, [selector1, selector2, ...]]`.
@@ -56,17 +46,21 @@ export type UbolConfig = z.infer<typeof UbolConfigSchema>;
 
 ```text
 stylus-to-ubol/
-├── index.html             # Client-side interface
+├── .agents/
+│   └── rules/             # Domain-specific modular rules (compiler, testing, CI)
 ├── src/
 │   ├── compiler.ts        # Unified in-memory compiler engine & statistics
 │   ├── main.ts            # UI event controller & download trigger
 │   └── style.css          # Minimalist styles
-├── tests/
+├── test/
 │   ├── compiler.test.ts   # Vitest unit tests for compiler engine
 │   └── e2e/
-│       └── app.spec.ts    # Playwright E2E integration tests
+│       └── app.test.ts    # Vitest browser-mode (Chromium) E2E integration tests
+├── index.html             # Client-side interface
+├── package.json           # Scripts, catalog dependencies, and engine configs
+├── pnpm-workspace.yaml    # Catalog dependency definitions
 ├── tsconfig.json          # Strict TypeScript configuration
-└── vite.config.ts         # Vite configuration
+└── vite.config.ts         # Consolidated Vite+ configuration (lint, fmt, test, build)
 ```
 
 ## Getting Started
@@ -74,21 +68,35 @@ stylus-to-ubol/
 ### Prerequisites
 
 - Node.js `24.x` (LTS)
+- Vite+ (`vp` / `vpr`)
 
 ### Installation
 
 ```bash
-npm ci
+vp install
 ```
 
 ### Development Server
 
 ```bash
-npm run dev
+vp dev
+```
+
+### Production Build
+
+```bash
+vp build
 ```
 
 ### Verification & Testing
 
 ```bash
-npm run check
+# Run full verification gate (Oxfmt, Oxlint, deadcode check, unit tests, build, E2E tests)
+vpr verify
+
+# Or individual tasks
+vp check              # Format & lint checks via Oxlint & Oxfmt
+vpr typecheck         # TypeScript strict check
+vpr agent:test:unit   # In-memory unit tests
+vpr agent:test:e2e    # Vitest browser Chromium E2E tests
 ```
