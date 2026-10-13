@@ -20,7 +20,7 @@
   },
   "dependencies": {
     "css-tree": "3.2.1",
-    "zod": "4.6.5"
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@types/css-tree": "3.2.0",
