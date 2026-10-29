@@ -122,6 +122,67 @@ body {
   background: rgba(139, 148, 158, 0.15);
 }
 
+/* Source Selector */
+.source-selector {
+  display: flex;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 3px;
+  gap: 4px;
+}
+
+.source-option {
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+  text-align: center;
+  border: 1px solid transparent;
+}
+
+.source-option input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.source-option:hover:not(.disabled) {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.source-option.active {
+  background: var(--bg-card);
+  color: #58a6ff;
+  border-color: var(--border-focus);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  font-weight: 600;
+}
+
+.source-option.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.source-option-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Dropzone */
 .dropzone {
   border: 2px dashed var(--border);
@@ -154,6 +215,39 @@ body {
 
 .dropzone-compact {
   padding: 18px 14px;
+}
+
+/* Storage Option Row */
+.storage-option-row {
+  display: flex;
+  align-items: center;
+  padding: 2px 4px;
+}
+
+.storage-checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.storage-checkbox {
+  appearance: auto;
+  accent-color: var(--accent-primary);
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
+.storage-label-text {
+  font-size: 12px;
+  color: var(--text-secondary);
+  transition: color 0.15s ease;
+}
+
+.storage-checkbox-label:hover .storage-label-text {
+  color: var(--text-primary);
 }
 
 /* Buttons */
@@ -231,6 +325,56 @@ body {
   padding: 2px 8px;
   border-radius: 4px;
   white-space: nowrap;
+}
+
+.badge-cached {
+  font-size: 11px;
+  font-weight: 600;
+  color: #d29922;
+  background: rgba(210, 153, 34, 0.15);
+  padding: 2px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.badge-uploaded {
+  font-size: 11px;
+  font-weight: 600;
+  color: #58a6ff;
+  background: rgba(88, 166, 255, 0.15);
+  padding: 2px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.base-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.btn-save-cache {
+  background: rgba(31, 111, 235, 0.15);
+  border: 1px solid rgba(88, 166, 255, 0.3);
+  color: #58a6ff;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+  font-family: inherit;
+}
+
+.btn-save-cache:hover {
+  background: rgba(31, 111, 235, 0.25);
+  border-color: #58a6ff;
+}
+
+.btn-save-cache[hidden] {
+  display: none;
 }
 
 .btn-clear {

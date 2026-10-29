@@ -59,6 +59,39 @@
               <span class="input-label">Existing uBlock Settings</span>
               <span class="badge-tag tag-optional">Optional</span>
             </div>
+
+            <!-- Source Selector: Default, Cached, Uploaded -->
+            <div
+              class="source-selector"
+              role="radiogroup"
+              aria-label="uBlock base configuration source"
+            >
+              <label class="source-option active" id="label-source-default">
+                <input
+                  type="radio"
+                  name="base-source"
+                  value="default"
+                  id="source-default"
+                  checked
+                />
+                <span class="source-option-title">Default</span>
+              </label>
+              <label class="source-option disabled" id="label-source-cached">
+                <input type="radio" name="base-source" value="cached" id="source-cached" disabled />
+                <span class="source-option-title" id="text-source-cached">Cached</span>
+              </label>
+              <label class="source-option disabled" id="label-source-uploaded">
+                <input
+                  type="radio"
+                  name="base-source"
+                  value="uploaded"
+                  id="source-uploaded"
+                  disabled
+                />
+                <span class="source-option-title" id="text-source-uploaded">Uploaded</span>
+              </label>
+            </div>
+
             <!-- Dropzone for ublock-config.json upload -->
             <div
               class="dropzone dropzone-compact"
@@ -79,21 +112,46 @@
               <span class="drop-hint">or drop ublock-config.json / my-ubol-settings.json</span>
             </div>
 
+            <!-- Overwrite Cache Option -->
+            <div class="storage-option-row">
+              <label class="storage-checkbox-label" for="overwrite-cache-checkbox">
+                <input
+                  type="checkbox"
+                  id="overwrite-cache-checkbox"
+                  class="storage-checkbox"
+                  checked
+                />
+                <span class="storage-label-text">Overwrite cache with newly uploaded file</span>
+              </label>
+            </div>
+
             <!-- Base File Info Status Bar -->
             <div class="file-status base-status" id="base-file-status" hidden>
               <div class="base-status-info">
                 <span class="file-name" id="base-file-name"></span>
-                <span class="file-badge badge-merged">Base Settings Loaded</span>
+                <span class="file-badge" id="base-file-badge">Base Settings Loaded</span>
               </div>
-              <button
-                type="button"
-                class="btn-clear"
-                id="btn-clear-base"
-                title="Remove base config"
-                aria-label="Remove base config"
-              >
-                Remove
-              </button>
+              <div class="base-actions">
+                <button
+                  type="button"
+                  class="btn-save-cache"
+                  id="btn-save-cache"
+                  title="Save uploaded file to browser cache"
+                  aria-label="Save uploaded file to browser cache"
+                  hidden
+                >
+                  Save to Cache
+                </button>
+                <button
+                  type="button"
+                  class="btn-clear"
+                  id="btn-clear-base"
+                  title="Remove base config"
+                  aria-label="Remove base config"
+                >
+                  Remove
+                </button>
+              </div>
             </div>
           </div>
 
