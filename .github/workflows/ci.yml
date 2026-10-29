@@ -14,6 +14,10 @@ on:
       - completed
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
   actions: read
@@ -32,6 +36,7 @@ jobs:
   gatekeeper:
     name: Gatekeeper (Linux)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -62,16 +67,20 @@ jobs:
         uses: actions/cache@v6
         with:
           path: node_modules/.vite/task-cache
-          key: ${{ runner.os }}-vite-task-cache-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          key: ${{ runner.os }}-${{ runner.arch }}-vite-task-cache-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-vite-task-cache-${{ hashFiles('pnpm-lock.yaml') }}-
-            ${{ runner.os }}-vite-task-cache-
+            ${{ runner.os }}-${{ runner.arch }}-vite-task-cache-${{ hashFiles('pnpm-lock.yaml') }}-
+            ${{ runner.os }}-${{ runner.arch }}-vite-task-cache-
 
       - name: Setup test environment (install browser)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: vp run test:setup
 
       - name: Install Playwright system dependencies on Linux
         run: vp exec playwright install-deps chromium
+
+      - name: Typecheck
+        run: vp run typecheck
 
       - name: Check (Oxlint & Oxfmt)
         run: vp check
@@ -102,6 +111,7 @@ jobs:
     name: Platform Compatibility (${{ matrix.os }})
     needs: gatekeeper
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -125,39 +135,13 @@ jobs:
         uses: actions/cache@v6
         with:
           path: node_modules/.vite/task-cache
-          key: ${{ runner.os }}-vite-task-cache-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          key: ${{ runner.os }}-${{ runner.arch }}-vite-task-cache-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-vite-task-cache-${{ hashFiles('pnpm-lock.yaml') }}-
-            ${{ runner.os }}-vite-task-cache-
+            ${{ runner.os }}-${{ runner.arch }}-vite-task-cache-${{ hashFiles('pnpm-lock.yaml') }}-
+            ${{ runner.os }}-${{ runner.arch }}-vite-task-cache-
 
       - name: Build production bundle
         run: vp build
 
-      - name: Get Playwright version
-        id: playwright-version
-        run: echo "version=$(vp exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
-
-      - name: Cache Playwright Browsers
-        uses: actions/cache@v6
-        id: playwright-cache
-        with:
-          path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
-          key: ${{ runner.os }}-${{ runner.arch }}-playwright-${{ steps.playwright-version.outputs.version }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-playwright-
-
-      - name: Setup test environment (install browser)
-        run: vp run test:setup
-
       - name: Run unit & smoke tests
         run: vp run agent:test:unit
-
-      - name: Upload Playwright artifacts on failure
-        uses: actions/upload-artifact@v7
-        if: failure()
-        with:
-          name: playwright-artifacts-${{ matrix.os }}
-          path: |
-            test-results/
-            playwright-report/
-          retention-days: 7
