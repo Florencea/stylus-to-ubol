@@ -1,29 +1,31 @@
 ---
 trigger: glob
 globs: "src/compiler.ts, test/compiler.test.ts"
-description: Rules for AST transformations, Stylus extraction, and uBlock Origin Lite configuration compilation.
+description: Architectural invariants and AST transformation rules for the Stylus-to-uBOL compiler engine.
 ---
 
 # Compiler Engine & Rules Transformation Standards
 
-Guidelines for the Stylus-to-uBOL compiler engine.
+Domain-specific AST compilation and filter-synthesis guidelines for `src/compiler.ts`.
 
-## 1. Single Source of Truth & Data Flow
-
-- **Unidirectional Data Flow**: Stylus JSON export is the sole Single Source of Truth (SSOT). Conversion is strictly one-way: Stylus JSON compiles to uBOL JSON configuration (`my-ubol-settings.json`). There is no reverse conversion back to Stylus.
-- **Zero CSS File Persistence**: Do not persist intermediate `.css` file assets to disk. All conversions are performed in memory. The sole persistent data asset is uBOL settings JSON.
-- **In-Memory AST Architecture**: All AST parsing and style transformations run in memory via `css-tree`.
-
-## 2. Rules Splitting Architecture
+## 1. Rules Splitting & Routing Invariants
 
 - **customFilters**: Dedicated to pure cosmetic hide selectors grouped by domain: `[domain, [selector1, selector2, ...]]`.
-- **sandboxFilters**: Dedicated to `:style(...)` style injection rules stored as full uBO syntax strings: `domain##selector:style(...)`.
-- **Global Generic Rules**: Generic rules (empty domains or `*`) use `*` domain in `customFilters` and `*##` prefix in `sandboxFilters`.
+  - Only declarations matching exactly `display:none !important` outside `@media (pointer: coarse)` queries route here.
+- **sandboxFilters**: Dedicated to style injection rules stored as full uBO syntax: `domain##selector:style(...)`.
+  - Rules containing non-hide properties, missing `!important`, or scoped under `pointer: coarse` route here.
+- **Global Generic Rules**: Styles without domain restriction use domain `*` in `customFilters` and `*##` prefix in `sandboxFilters`.
 
-## 3. Procedural Rules & @media Handling
+## 2. AST Parsing & @media Processing
 
-- Declarations are serialized into `:style(...)` rules.
-- Pure `display: none !important` rules outside coarse pointer queries route to `customFilters`.
-- Nested `@media` scopes compile to `:matches-media(...)` suffixes.
-- Pseudo-elements are separated to ensure `:matches-media` is placed before pseudo-elements.
-- Declarations preserve the original CSS `!important` state.
+- **css-tree In-Memory Traversal**: Traverse parsed AST while maintaining an `@media` stack joined by `and` -> `:matches-media(...)`.
+- **Pseudo-Element Separation**:
+  - Separate pseudo-elements (`::before`, `::after`, `:before`, `:after`, `first-letter`, `first-line`) from the base selector.
+  - When a pseudo-element is present on a procedural rule, omit the `:matches-media` suffix to preserve uBOL selector compatibility.
+- **Declaration Serialization**:
+  - Declarations preserve property, trimmed value, and `!important` flag (`prop:value !important` or `prop:value`).
+
+## 3. Schema Parsing & Base Config Merging
+
+- **Zod Data Contracts**: Stylus exports are parsed using `StylusExportSchema` supporting legacy tuple format, flat array, and wrapped object formats.
+- **Base Config Integration**: When a base `my-ubol-settings.json` is supplied, merge generated filters while preserving upstream keys; otherwise fallback to the default template (`version: "2026.920.1710"`).

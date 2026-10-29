@@ -36,7 +36,7 @@ Guidelines for AI agents and human contributors working on this repository.
 - **Single Source of Truth**: Stylus JSON export is the sole Single Source of Truth (SSOT). Conversion is strictly one-way: Stylus JSON compiles to uBOL JSON (`my-ubol-settings.json`).
 - **Zero CSS File Persistence**: Do not persist intermediate `.css` file assets to disk. All conversions are performed in memory.
 - **Rules Splitting SSOT**: `customFilters` for pure cosmetic hide rules; `sandboxFilters` for `:style(...)` style injections.
-- **Domain Rules**: Path-specific rules live under `.agents/rules/` (`compiler`, `testing`, `ci-workflows`) and activate via file globbing.
+- **Domain Rules**: Path-specific rules live under `.agents/rules/` (`compiler`, `testing`) and activate via file globbing.
 
 ---
 

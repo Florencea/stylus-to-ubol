@@ -47,7 +47,7 @@ export interface UbolConfig {
 ```text
 stylus-to-ubol/
 ├── .agents/
-│   └── rules/             # Domain-specific modular rules (compiler, testing, CI)
+│   └── rules/             # Domain-specific modular rules (compiler, testing)
 ├── src/
 │   ├── compiler.ts        # Unified in-memory compiler engine & statistics
 │   ├── main.ts            # UI event controller & download trigger
