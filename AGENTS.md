@@ -36,7 +36,7 @@ Guidelines for AI agents and human contributors working on this repository.
 - **Single Source of Truth**: Stylus JSON export is the sole Single Source of Truth (SSOT). Conversion is strictly one-way: Stylus JSON compiles to uBOL JSON (`my-ubol-settings.json`).
 - **Zero CSS File Persistence**: Do not persist intermediate `.css` file assets to disk. All conversions are performed in memory.
 - **Rules Splitting SSOT**: `customFilters` for pure cosmetic hide rules; `sandboxFilters` for `:style(...)` style injections.
-- **Domain Rules**: Path-specific rules live under `.agents/rules/` (`compiler`, `testing`) and activate via file globbing.
+- **Domain Rules**: Path-specific rules live under `.agents/rules/` (`compiler`, `testing`, `ci-workflows`) and activate via file globbing.
 
 ---
 
@@ -49,7 +49,7 @@ Prioritize `vpr agent:*` commands matching Antigravity's whitelist:
 - **Unit Tests**: `vpr agent:test:unit` (`vp test run --project unit --reporter=tap-flat --no-color`)
 - **E2E Tests**: `vpr agent:test:e2e` (`vp test run --project e2e --reporter=tap-flat --no-color`)
 - **Lint & Fix**: `vp check --fix`
-- **CI Lint**: `vpr agent:lint:ci` (`actionlint` 0 errors/warnings)
+- **CI Lint**: `vpr agent:lint:ci` (`actionlint` 0 errors/warnings; workflows mandate Major floating tags without exact patch pinning)
 - **Task Caching**: Scripts executed via `vpr` leverage Vite Task caching (`run.cache: { scripts: true }`). Unmodified steps replay in milliseconds. Use `vpr --last-details` to inspect cache hit status or `vp cache clean` / `vpr --no-cache` to force clean execution.
 
 ---
