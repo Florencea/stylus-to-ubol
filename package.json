@@ -8,7 +8,7 @@
     "agent:test:e2e": "vp test run --project e2e --reporter=tap-flat --no-color",
     "agent:test:unit": "vp test run --project unit --reporter=tap-flat --no-color",
     "agent:verify:gate": "vpr agent:verify:unit && vp build && vpr agent:test:e2e",
-    "agent:verify:inner": "vpr typecheck && vp check",
+    "agent:verify:inner": "vpr typecheck && vp lint",
     "agent:verify:unit": "vpr agent:verify:inner && vpr agent:test:unit",
     "check:deadcode": "knip",
     "lint:ci": "actionlint",

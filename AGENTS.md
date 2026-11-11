@@ -45,7 +45,7 @@ Guidelines for AI agents and human contributors working on this repository.
 Prioritize `vpr agent:*` commands matching Antigravity's whitelist:
 
 - **Gate**: `vpr agent:verify:gate` (unit -> build -> e2e) or `vpr verify`
-- **Inner Loop**: `vpr agent:verify:inner` (typecheck -> `vp check`)
+- **Inner Loop**: `vpr agent:verify:inner` (typecheck -> `vp lint`)
 - **Unit Tests**: `vpr agent:test:unit` (`vp test run --project unit --reporter=tap-flat --no-color`)
 - **E2E Tests**: `vpr agent:test:e2e` (`vp test run --project e2e --reporter=tap-flat --no-color`)
 - **Lint & Fix**: `vp check --fix`
