@@ -18,6 +18,4 @@ permissions:
 
 jobs:
   ci:
-    uses: Florencea/vp-actions/.github/workflows/vp-web-ci.yml@v2.0.0
-    with:
-      enable-platform-compat: true
+    uses: Florencea/vp-actions/.github/workflows/vp-web-ci.yml@v3.0.0
