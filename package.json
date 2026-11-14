@@ -27,7 +27,7 @@
     "@types/node": "26.6.6",
     "@vitest/browser-playwright": "catalog:",
     "knip": "6.45.1",
-    "playwright": "1.65.0",
+    "playwright": "1.65.1",
     "typescript": "7.0.2",
     "vite-plus": "catalog:",
     "vitest": "catalog:"
