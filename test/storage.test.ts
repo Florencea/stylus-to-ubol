@@ -38,16 +38,21 @@ class MemoryStorage implements Storage {
 }
 
 describe("Storage Service", () => {
-  let originalStorage: Storage | undefined;
+  let originalStorageDescriptor: PropertyDescriptor | undefined;
 
   beforeEach(() => {
-    originalStorage = globalThis.localStorage;
-    globalThis.localStorage = new MemoryStorage();
+    originalStorageDescriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+    Object.defineProperty(globalThis, "localStorage", {
+      value: new MemoryStorage(),
+      configurable: true,
+      writable: true,
+      enumerable: originalStorageDescriptor?.enumerable ?? false,
+    });
   });
 
   afterEach(() => {
-    if (originalStorage !== undefined) {
-      globalThis.localStorage = originalStorage;
+    if (originalStorageDescriptor !== undefined) {
+      Object.defineProperty(globalThis, "localStorage", originalStorageDescriptor);
     } else {
       Reflect.deleteProperty(globalThis, "localStorage");
     }
