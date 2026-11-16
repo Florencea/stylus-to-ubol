@@ -40,5 +40,6 @@
       "actionlint"
     ],
     "playwright": true
-  }
+  },
+  "packageManager": "pnpm@12.21.0"
 }
