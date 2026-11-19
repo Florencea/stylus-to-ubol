@@ -10,8 +10,8 @@ Testing standards tailored specifically for the `stylus-to-ubol` test suite.
 
 ## 1. Compiler Unit Tests (`test/compiler.test.ts`)
 
-- **Strict AST Type Narrowing**: Use `assert` from `vite-plus/test` to narrow AST node types (e.g. `assert(ast.type === "StyleSheet")`) before inspecting children.
-- **No Conditional Expects**: Never wrap assertions inside `if` blocks or optional chaining guards; rely strictly on `assert` narrowing to ensure strict TypeScript inference and satisfy `oxlint` rules (`no-conditional-expect`).
+- **Strict AST Type Narrowing**: Use `assert` from `vitest` to narrow AST node types (e.g. `assert(ast.type === "StyleSheet")`) before inspecting children.
+- **No Conditional Expects**: Never wrap assertions inside `if` blocks or optional chaining guards; rely strictly on `assert` narrowing to ensure strict TypeScript inference and satisfy ESLint rules (`@vitest/eslint-plugin` `vitest/no-conditional-expect`).
 
 ## 2. In-Memory Browser E2E Tests (`test/e2e/app.test.ts`)
 

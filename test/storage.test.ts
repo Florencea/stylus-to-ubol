@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   clearStoredBaseConfig,
   getLocalStorage,
@@ -10,7 +10,7 @@ import {
 } from "../src/storage.ts";
 
 class MemoryStorage implements Storage {
-  private store = new Map<string, string>();
+  private readonly store = new Map<string, string>();
 
   get length(): number {
     return this.store.size;
@@ -41,7 +41,10 @@ describe("Storage Service", () => {
   let originalStorageDescriptor: PropertyDescriptor | undefined;
 
   beforeEach(() => {
-    originalStorageDescriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+    originalStorageDescriptor = Object.getOwnPropertyDescriptor(
+      globalThis,
+      "localStorage",
+    );
     Object.defineProperty(globalThis, "localStorage", {
       value: new MemoryStorage(),
       configurable: true,
@@ -52,7 +55,11 @@ describe("Storage Service", () => {
 
   afterEach(() => {
     if (originalStorageDescriptor !== undefined) {
-      Object.defineProperty(globalThis, "localStorage", originalStorageDescriptor);
+      Object.defineProperty(
+        globalThis,
+        "localStorage",
+        originalStorageDescriptor,
+      );
     } else {
       Reflect.deleteProperty(globalThis, "localStorage");
     }
@@ -100,7 +107,10 @@ describe("Storage Service", () => {
 
   it("handles invalid schema shape in localStorage gracefully and cleans up", () => {
     const storage = getLocalStorage();
-    storage?.setItem(STORAGE_KEY_UBOL_BASE, JSON.stringify({ wrongField: 123 }));
+    storage?.setItem(
+      STORAGE_KEY_UBOL_BASE,
+      JSON.stringify({ wrongField: 123 }),
+    );
     expect(loadStoredBaseConfig()).toBeNull();
     expect(storage?.getItem(STORAGE_KEY_UBOL_BASE)).toBeNull();
   });

@@ -1,62 +1,29 @@
-import { defineConfig } from "vite-plus";
-import { playwright } from "vite-plus/test/browser-playwright";
+import { playwright } from "@vitest/browser-playwright";
+import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   base: "./",
-  run: {
-    cache: {
-      scripts: true,
-    },
-  },
-  lint: {
-    ignorePatterns: [
-      "dist/**",
-      ".cache/**",
-      ".vitest/**",
-      "test-results/**",
-      "playwright-report/**",
-      "blob-report/**",
-    ],
-    options: {
-      typeAware: true,
-      typeCheck: true,
-    },
-    categories: {
-      correctness: "error",
-      suspicious: "error",
-      perf: "error",
-    },
-    plugins: ["unicorn", "typescript", "oxc", "vitest", "promise"],
-  },
-  fmt: {
-    ignorePatterns: [
-      "dist/**",
-      ".cache/**",
-      ".vitest/**",
-      "test-results/**",
-      "playwright-report/**",
-      "blob-report/**",
-    ],
-    sortPackageJson: true,
-  },
   test: {
-    allowOnly: !process.env.CI,
+    allowOnly: (process.env.CI ?? "") === "",
     silent: "passed-only",
     projects: [
       {
+        extends: true,
         test: {
           name: "unit",
           include: ["test/**/*.{test,spec}.ts"],
           exclude: ["test/e2e/**"],
+          environment: "node",
         },
       },
       {
+        extends: true,
         test: {
           name: "e2e",
           include: ["test/e2e/**/*.{test,spec}.ts"],
           browser: {
-            provider: playwright(),
             enabled: true,
+            provider: playwright(),
             headless: true,
             instances: [{ browser: "chromium" }],
           },

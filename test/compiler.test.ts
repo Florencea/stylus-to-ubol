@@ -1,5 +1,5 @@
 import { parse } from "css-tree";
-import { assert, describe, expect, it } from "vite-plus/test";
+import { assert, describe, expect, it } from "vitest";
 import {
   buildUboRules,
   compileStylus,
@@ -43,7 +43,8 @@ describe("Compiler Engine", () => {
       assert(rule.prelude.type === "SelectorList");
       const sel = rule.prelude.children.first;
       assert(sel?.type === "Selector");
-      const { baseSelector, pseudoElement } = splitSelectorAndPseudoElement(sel);
+      const { baseSelector, pseudoElement } =
+        splitSelectorAndPseudoElement(sel);
       expect(baseSelector).toBe(".header");
       expect(pseudoElement).toBe("::before");
     });
@@ -56,7 +57,8 @@ describe("Compiler Engine", () => {
       assert(rule.prelude.type === "SelectorList");
       const sel = rule.prelude.children.first;
       assert(sel?.type === "Selector");
-      const { baseSelector, pseudoElement } = splitSelectorAndPseudoElement(sel);
+      const { baseSelector, pseudoElement } =
+        splitSelectorAndPseudoElement(sel);
       expect(baseSelector).toBe(".btn");
       expect(pseudoElement).toBe(":after");
     });
@@ -124,7 +126,9 @@ describe("Compiler Engine", () => {
         },
       ];
       const config = buildUboRules(rules);
-      expect(config.sandboxFilters).toEqual(['example.com##.nav::before:style(content:">")']);
+      expect(config.sandboxFilters).toEqual([
+        'example.com##.nav::before:style(content:">")',
+      ]);
     });
   });
 
@@ -187,7 +191,9 @@ describe("Compiler Engine", () => {
 
       expect(result.config).toBeDefined();
       expect(result.config.version).toBe("2026.920.1710");
-      expect(result.config.customFilters).toEqual([["site.com", [".desktop-ad"]]]);
+      expect(result.config.customFilters).toEqual([
+        ["site.com", [".desktop-ad"]],
+      ]);
       expect(result.config.sandboxFilters).toEqual([
         "site.com##.mobile-ad:matches-media((pointer:coarse)):style(display:none !important)",
       ]);
@@ -203,9 +209,9 @@ describe("Compiler Engine", () => {
     });
 
     it("throws clear error on invalid structure without sections", () => {
-      expect(() => compileStylus(JSON.stringify([{ invalid: "data" }]))).toThrow(
-        /Invalid Stylus JSON/,
-      );
+      expect(() =>
+        compileStylus(JSON.stringify([{ invalid: "data" }])),
+      ).toThrow(/Invalid Stylus JSON/);
     });
   });
 });

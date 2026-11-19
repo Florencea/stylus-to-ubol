@@ -12,9 +12,6 @@ export type StoredBaseConfig = z.infer<typeof StoredBaseConfigSchema>;
 
 export const getLocalStorage = (): Storage | null => {
   try {
-    if (typeof window !== "undefined" && window.localStorage !== undefined) {
-      return window.localStorage;
-    }
     if (typeof localStorage !== "undefined") {
       return localStorage;
     }
@@ -63,7 +60,10 @@ export const loadStoredBaseConfig = (): StoredBaseConfig | null => {
   }
 };
 
-export const saveStoredBaseConfig = (rawText: string, fileName: string): boolean => {
+export const saveStoredBaseConfig = (
+  rawText: string,
+  fileName: string,
+): boolean => {
   const storage = getLocalStorage();
   if (storage === null) return false;
   try {

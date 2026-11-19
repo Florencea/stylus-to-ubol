@@ -28,15 +28,19 @@ export const triggerDownload = (filename: string, content: string): void => {
 export const setupConverterApp = (): void => {
   // Stylus upload elements
   const dropzone = document.getElementById("stylus-dropzone");
-  const fileInput = document.querySelector<HTMLInputElement>("#stylus-file-input");
+  const fileInput =
+    document.querySelector<HTMLInputElement>("#stylus-file-input");
   const uploadBtn = document.getElementById("btn-upload-stylus");
   const fileStatus = document.getElementById("file-status");
   const fileName = document.getElementById("file-name");
 
   // Source selector radio inputs & labels
-  const radioDefault = document.querySelector<HTMLInputElement>("#source-default");
-  const radioCached = document.querySelector<HTMLInputElement>("#source-cached");
-  const radioUploaded = document.querySelector<HTMLInputElement>("#source-uploaded");
+  const radioDefault =
+    document.querySelector<HTMLInputElement>("#source-default");
+  const radioCached =
+    document.querySelector<HTMLInputElement>("#source-cached");
+  const radioUploaded =
+    document.querySelector<HTMLInputElement>("#source-uploaded");
 
   const labelDefault = document.getElementById("label-source-default");
   const labelCached = document.getElementById("label-source-cached");
@@ -47,7 +51,8 @@ export const setupConverterApp = (): void => {
 
   // Base config upload elements
   const baseDropzone = document.getElementById("base-dropzone");
-  const baseFileInput = document.querySelector<HTMLInputElement>("#base-file-input");
+  const baseFileInput =
+    document.querySelector<HTMLInputElement>("#base-file-input");
   const baseUploadBtn = document.getElementById("btn-upload-base");
   const overwriteCacheCheckbox = document.querySelector<HTMLInputElement>(
     "#overwrite-cache-checkbox",
@@ -57,8 +62,10 @@ export const setupConverterApp = (): void => {
   const baseFileStatus = document.getElementById("base-file-status");
   const baseFileName = document.getElementById("base-file-name");
   const baseFileBadge = document.getElementById("base-file-badge");
-  const btnSaveCache = document.querySelector<HTMLButtonElement>("#btn-save-cache");
-  const btnClearBase = document.querySelector<HTMLButtonElement>("#btn-clear-base");
+  const btnSaveCache =
+    document.querySelector<HTMLButtonElement>("#btn-save-cache");
+  const btnClearBase =
+    document.querySelector<HTMLButtonElement>("#btn-clear-base");
 
   // Stats elements
   const statsPanel = document.getElementById("stats-panel");
@@ -68,7 +75,8 @@ export const setupConverterApp = (): void => {
   const statsBaseStatus = document.getElementById("stats-base-status");
 
   // Download & error elements
-  const btnDownload = document.querySelector<HTMLButtonElement>("#btn-download");
+  const btnDownload =
+    document.querySelector<HTMLButtonElement>("#btn-download");
   const errorPanel = document.getElementById("error-panel");
   const errorMessage = document.getElementById("error-message");
 
@@ -81,12 +89,21 @@ export const setupConverterApp = (): void => {
 
   let currentConfig: UbolConfig | null = null;
 
-  const getActiveBaseConfig = (): { rawText: string; fileName: string } | null => {
+  const getActiveBaseConfig = (): {
+    rawText: string;
+    fileName: string;
+  } | null => {
     if (activeBaseSource === "cached" && cachedBaseConfig !== null) {
-      return { rawText: cachedBaseConfig.rawText, fileName: cachedBaseConfig.fileName };
+      return {
+        rawText: cachedBaseConfig.rawText,
+        fileName: cachedBaseConfig.fileName,
+      };
     }
     if (activeBaseSource === "uploaded" && uploadedBaseConfig !== null) {
-      return { rawText: uploadedBaseConfig.rawText, fileName: uploadedBaseConfig.fileName };
+      return {
+        rawText: uploadedBaseConfig.rawText,
+        fileName: uploadedBaseConfig.fileName,
+      };
     }
     return null;
   };
@@ -167,7 +184,9 @@ export const setupConverterApp = (): void => {
     }
     if (textCached !== null) {
       textCached.textContent =
-        cachedBaseConfig !== null ? `Cached (${cachedBaseConfig.fileName})` : "Cached";
+        cachedBaseConfig !== null
+          ? `Cached (${cachedBaseConfig.fileName})`
+          : "Cached";
     }
 
     // Uploaded option
@@ -182,7 +201,9 @@ export const setupConverterApp = (): void => {
     }
     if (textUploaded !== null) {
       textUploaded.textContent =
-        uploadedBaseConfig !== null ? `Uploaded (${uploadedBaseConfig.fileName})` : "Uploaded";
+        uploadedBaseConfig !== null
+          ? `Uploaded (${uploadedBaseConfig.fileName})`
+          : "Uploaded";
     }
 
     // Base file status bar rendering
@@ -190,7 +211,8 @@ export const setupConverterApp = (): void => {
       if (baseFileStatus !== null) baseFileStatus.hidden = true;
     } else if (activeBaseSource === "cached" && cachedBaseConfig !== null) {
       if (baseFileStatus !== null) baseFileStatus.hidden = false;
-      if (baseFileName !== null) baseFileName.textContent = cachedBaseConfig.fileName;
+      if (baseFileName !== null)
+        baseFileName.textContent = cachedBaseConfig.fileName;
       if (baseFileBadge !== null) {
         baseFileBadge.textContent = "Cached";
         baseFileBadge.className = "file-badge badge-cached";
@@ -199,11 +221,15 @@ export const setupConverterApp = (): void => {
       if (btnClearBase !== null) {
         btnClearBase.textContent = "Clear Cache";
         btnClearBase.title = "Clear cached config from browser storage";
-        btnClearBase.setAttribute("aria-label", "Clear cached config from browser storage");
+        btnClearBase.setAttribute(
+          "aria-label",
+          "Clear cached config from browser storage",
+        );
       }
     } else if (activeBaseSource === "uploaded" && uploadedBaseConfig !== null) {
       if (baseFileStatus !== null) baseFileStatus.hidden = false;
-      if (baseFileName !== null) baseFileName.textContent = uploadedBaseConfig.fileName;
+      if (baseFileName !== null)
+        baseFileName.textContent = uploadedBaseConfig.fileName;
       if (baseFileBadge !== null) {
         baseFileBadge.textContent = "Uploaded";
         baseFileBadge.className = "file-badge badge-uploaded";
@@ -223,7 +249,11 @@ export const setupConverterApp = (): void => {
     }
 
     // Update stats metric if visible
-    if (statsBaseStatus !== null && statsPanel !== null && !statsPanel.hidden) {
+    if (
+      statsBaseStatus !== null &&
+      statsPanel !== null &&
+      statsPanel.hidden === false
+    ) {
       const activeBase = getActiveBaseConfig();
       if (activeBaseSource === "cached" && activeBase !== null) {
         statsBaseStatus.textContent = `Cached (${activeBase.fileName})`;
@@ -245,7 +275,10 @@ export const setupConverterApp = (): void => {
 
     const activeBase = getActiveBaseConfig();
     try {
-      const result = compileStylus(currentRawStylus, activeBase?.rawText ?? null);
+      const result = compileStylus(
+        currentRawStylus,
+        activeBase?.rawText ?? null,
+      );
       showSuccess(currentStylusName, result);
     } catch (err) {
       showError(err);
@@ -450,7 +483,10 @@ export const setupConverterApp = (): void => {
   btnSaveCache?.addEventListener("click", (e) => {
     e.stopPropagation();
     if (uploadedBaseConfig === null) return;
-    saveStoredBaseConfig(uploadedBaseConfig.rawText, uploadedBaseConfig.fileName);
+    saveStoredBaseConfig(
+      uploadedBaseConfig.rawText,
+      uploadedBaseConfig.fileName,
+    );
     cachedBaseConfig = {
       rawText: uploadedBaseConfig.rawText,
       fileName: uploadedBaseConfig.fileName,
