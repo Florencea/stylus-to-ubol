@@ -65,7 +65,7 @@ stylus-to-ubol/
 ├── eslint.config.ts       # Strict ESLint 10 flat configuration
 ├── index.html             # Client-side interface
 ├── package-lock.json      # Exact npm dependency lockfile
-├── package.json           # Scripts, dependencies, and engine constraints
+├── package.json           # Shared scripts and pinned dependencies
 ├── prettier.config.ts     # Prettier configuration with packagejson sorting
 ├── tsconfig.json          # Project references TypeScript configuration
 └── vite.config.ts         # Vite build & Vitest dual-project test configuration
@@ -75,7 +75,7 @@ stylus-to-ubol/
 
 ### Prerequisites
 
-- Node.js `26.x` (Active LTS)
+- Node.js Active LTS (validated against dependency `engines` ranges via `.npmrc` `engine-strict=true`, currently `^22.12.0 || ^24.0.0 || >=26.0.0`)
 - `npm`
 
 ```bash
@@ -85,15 +85,16 @@ npm run dev
 
 ## Verification Gates
 
-The project enforces a strict `.npmrc` policy (`ignore-scripts=true`, `save-exact=true`, `install-strategy=linked`, `strict-peer-deps=true`, `engine-strict=true`) and provides multi-tier verification workflows:
+The project enforces a strict `.npmrc` policy (`ignore-scripts=true`, `save-exact=true`, `install-strategy=linked`, `strict-peer-deps=true`, `engine-strict=true`) and provides shared human/agent verification workflows:
 
-### Inner Loop: Fast Feedback (`check:fast`)
+### Inner Loop: Static & Unit Checks
 
 ```bash
-npm run check:fast
+npm run typecheck && npm run lint && npm run format:check
+npm run test:unit
 ```
 
-Executes `typecheck` (`tsc -b --pretty false`) + `lint` (ESLint `strictTypeChecked` & `stylisticTypeChecked`) + `agent:test:unit` (Vitest unit tests).
+Executes TypeScript 6 `tsc -b --pretty false`, ESLint (`strictTypeChecked` & `stylisticTypeChecked`, `--max-warnings 0`), Prettier formatting check, and Vitest unit tests.
 
 ### Complete Verification Gate (`verify`)
 
@@ -103,42 +104,35 @@ npm run verify
 
 Executes:
 
-1. `typecheck` (`tsc -b --pretty false`)
+1. `typecheck` (TypeScript 6 `tsc -b --pretty false`)
 2. `lint` (ESLint `strictTypeChecked` + `stylisticTypeChecked`, `--max-warnings 0`)
 3. `format:check` (Prettier formatting check)
-4. `check:deadcode` (Knip unused exports and dependency check)
-5. `vitest run` (Unit & Playwright Chromium Browser tests)
-6. `vite build` (Vite production bundle verification)
+4. `build` (Vite production bundle verification)
+5. `npm test` (Unit & Playwright Chromium Browser tests)
 
 ### Deployment Workflow
 
-- **GitHub Pages Deployment (`.github/workflows/deploy.yml`)**: Runs on `push` to `main` or manual `workflow_dispatch` on `ubuntu-24.04` against `package.json` `engines.node`. Performs `npm ci`, runs `npm run build`, and deploys `dist/` to GitHub Pages.
-- **Workflow Syntax Linting**: Validate `.github/workflows/*.yml` locally with `npm run agent:lint:ci` (`actionlint`) before staging changes.
+- **GitHub Pages Deployment (`.github/workflows/deploy.yml`)**: Runs on `push` to `main` or manual `workflow_dispatch` on `ubuntu-24.04` with `actions/setup-node` `node-version: "lts/*"`. Performs `npm ci`, runs `npm run build`, and deploys `dist/` to GitHub Pages.
+- **Workflow Syntax Linting**: Validate `.github/workflows/*.yml` locally with `npm run lint:ci` (`actionlint`) before staging changes.
 
 ## Available Commands & Scripts
 
-| Script                       | Description                                                             |
-| :--------------------------- | :---------------------------------------------------------------------- |
-| `npm run dev`                | Start local Vite development server                                     |
-| `npm run build`              | Build production bundle with Vite                                       |
-| `npm run preview`            | Preview production build locally                                        |
-| `npm run typecheck`          | Run strict TypeScript project build checks (`tsc -b --pretty false`)    |
-| `npm run lint`               | Run strict ESLint checks (`--max-warnings 0`)                           |
-| `npm run lint:fix`           | Run ESLint auto-fix                                                     |
-| `npm run format`             | Format files with Prettier                                              |
-| `npm run format:check`       | Verify formatting with Prettier                                         |
-| `npm test`                   | Run all Vitest projects (`unit` and `e2e`)                              |
-| `npm run test:unit`          | Run Vitest unit test project                                            |
-| `npm run test:e2e`           | Run Vitest Browser Mode (`@vitest/browser-playwright`) E2E project      |
-| `npm run test:setup`         | Install Playwright Chromium browser binaries                            |
-| `npm run check:deadcode`     | Run Knip deadcode and unused dependency detection                       |
-| `npm run agent:verify:inner` | Inner-loop validation (`typecheck` + `lint`)                            |
-| `npm run agent:test:unit`    | Flat TAP output Vitest unit execution without colors                    |
-| `npm run agent:test:e2e`     | Flat TAP output Vitest browser E2E execution without colors             |
-| `npm run agent:verify:gate`  | Automated verification gate (`agent:verify:unit` + `build` + `e2e`)     |
-| `npm run verify`             | Complete verification gate (typecheck, lint, format, knip, test, build) |
-| `npm run agent:lint:fix`     | Run ESLint `--fix` and Prettier `--write`                               |
-| `npm run agent:lint:ci`      | Check GitHub Actions workflows with `actionlint`                        |
+| Script                 | Description                                                        |
+| :--------------------- | :----------------------------------------------------------------- |
+| `npm run dev`          | Start local Vite development server                                |
+| `npm run build`        | Build production bundle with Vite                                  |
+| `npm run preview`      | Preview production build locally                                   |
+| `npm run typecheck`    | Run strict TypeScript 6 project build checks (`tsc -b`)            |
+| `npm run lint`         | Run strict ESLint checks (`--max-warnings 0`)                      |
+| `npm run lint:fix`     | Run ESLint auto-fix                                                |
+| `npm run lint:ci`      | Check GitHub Actions workflows with `actionlint`                   |
+| `npm run format`       | Format files with Prettier                                         |
+| `npm run format:check` | Verify formatting with Prettier                                    |
+| `npm test`             | Run all Vitest projects (`unit` and `e2e`)                         |
+| `npm run test:unit`    | Run Vitest unit test project                                       |
+| `npm run test:e2e`     | Run Vitest Browser Mode (`@vitest/browser-playwright`) E2E project |
+| `npm run test:setup`   | Install Playwright Chromium browser binaries                       |
+| `npm run verify`       | Complete verification gate (typecheck, lint, format, build, test)  |
 
 ## Guidelines
 

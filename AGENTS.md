@@ -21,21 +21,23 @@ Guidelines for contributors on the **`stylus-to-ubol`** repository.
 - **Zero CSS File Persistence**: Do not persist intermediate `.css` file assets to disk. All conversions are performed in memory.
 - **Rules Splitting SSOT**: `customFilters` for pure cosmetic hide rules; `sandboxFilters` for `:style(...)` style injections.
 - **Headless Compiler**: Keep `src/compiler.ts` free of DOM and browser globals (`globals.es2023` enforced by ESLint).
-- **Strict TypeScript & ESLint**: ESLint uses `strictTypeChecked` and `stylisticTypeChecked` with `typescript-eslint`, `@vitest/eslint-plugin`, `noInlineConfig: true`, `--max-warnings 0`, and Prettier formatting (`prettier-plugin-packagejson`). Never use `// @ts-ignore`, `// @ts-expect-error`, `// @ts-nocheck`, or `/* eslint-disable */`.
-- **Strict `.npmrc` Policy**: Keep `ignore-scripts=true`, `save-exact=true`, `install-strategy=linked`, `strict-peer-deps=true`, and `engine-strict=true` in `.npmrc`. Use `npm ci` for clean installs and `npm run test:setup` (`playwright install chromium`) explicitly for browser binaries.
-- **Exact SemVer Action Pinning**: Pin GitHub Actions to exact stable SemVer tags (`@vX.Y.Z`, never `@v1` or `@v7.0`) and validate `.github/workflows/*.yml` locally with `actionlint`.
+- **Strict TypeScript 6 & ESLint**: Type checking uses standard pure-JS TypeScript 6 (`tsc -b --pretty false`). ESLint 10 uses `strictTypeChecked` and `stylisticTypeChecked` with `typescript-eslint`, `@vitest/eslint-plugin`, `noInlineConfig: true`, `--max-warnings 0`, and Prettier formatting (`prettier-plugin-packagejson`). Never use `// @ts-ignore`, `// @ts-expect-error`, `// @ts-nocheck`, or `/* eslint-disable */`.
+- **Supply-Chain & Cooldown Governance**: Keep `ignore-scripts=true`, `save-exact=true`, `install-strategy=linked`, `strict-peer-deps=true`, and `engine-strict=true` in `.npmrc`. Omit root `engines.node` in `package.json` so `.npmrc` `engine-strict=true` enforces installed packages' declared `engines` ranges directly. Batch-update toolchain dependencies quarterly/semi-annually with a 7–14 day cooldown window; patch immediately only for CVEs affecting browser runtime (`npm audit --omit=dev`) or build security. Do not pin `knip` in `devDependencies`. Use `npm ci` for clean installs and `npm run test:setup` (`playwright install chromium`) explicitly for browser binaries.
+- **Exact SemVer Action Pinning**: Pin GitHub Actions to exact stable SemVer tags (`@vX.Y.Z`, never `@v1` or `@v7.0`) and validate `.github/workflows/*.yml` locally with `npm run lint:ci` (`actionlint`).
 
 ---
 
-## 3. Verification Ladder
+## 3. Shared Verification & Workflow Commands
 
-- **Inner Loop**: `npm run agent:verify:inner` (`npm run typecheck && npm run lint`)
-- **Unit Suite**: `npm run agent:test:unit` (`vitest run --project unit --reporter=tap-flat --no-color`)
-- **Unit Verification**: `npm run agent:verify:unit` (`npm run agent:verify:inner && npm run agent:test:unit`)
-- **E2E Browser Suite**: `npm run agent:test:e2e` (`vitest run --project e2e --reporter=tap-flat --no-color`)
-- **Unified Gate**: `npm run agent:verify:gate` (`npm run agent:verify:unit && npm run build && npm run agent:test:e2e`)
-- **Full Verification**: `npm run verify` (`typecheck`, `lint`, `format:check`, `check:deadcode`, `vitest run`, `vite build`)
-- **Diagnostics & Formatting**: `npm run lint` (`eslint --max-warnings 0 .`), `npx prettier --write <files>`, `npm run agent:lint:ci` (`actionlint`)
+Humans and agents share the same standard `npm run` commands:
+
+- **Inner-Loop Static Checks**: `npm run typecheck && npm run lint && npm run format:check`
+- **Auto-Fix Lint & Format**: `npm run lint:fix && npm run format`
+- **Unit Suite**: `npm run test:unit` (for compact agent output, append `-- --reporter=tap-flat --no-color`)
+- **Production Build**: `npm run build`
+- **E2E Browser Suite**: `npm run test:e2e` (for compact agent output, append `-- --reporter=tap-flat --no-color`)
+- **Full Verification Gate (DoD)**: `npm run verify` (`typecheck`, `lint`, `format:check`, `build`, `npm test`)
+- **CI Workflow Linting**: `npm run lint:ci` (`actionlint`)
 
 ---
 
