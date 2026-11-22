@@ -62,11 +62,10 @@ stylus-to-ubol/
 │       └── app.test.ts    # Vitest browser-mode (Chromium) E2E integration tests
 ├── .npmrc                 # Strict npm supply-chain & lockfile configuration
 ├── .prettierignore        # Prettier ignore patterns
-├── eslint.config.ts       # Strict ESLint 10 flat configuration
+├── eslint.config.js       # Strict ESLint 10 flat configuration (// @ts-check)
 ├── index.html             # Client-side interface
 ├── package-lock.json      # Exact npm dependency lockfile
 ├── package.json           # Shared scripts and pinned dependencies
-├── prettier.config.ts     # Prettier configuration with packagejson sorting
 ├── tsconfig.json          # Project references TypeScript configuration
 └── vite.config.ts         # Vite build & Vitest dual-project test configuration
 ```

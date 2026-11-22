@@ -1,3 +1,4 @@
+// @ts-check
 import js from "@eslint/js";
 import vitest from "@vitest/eslint-plugin";
 import { defineConfig, globalIgnores } from "eslint/config";
@@ -20,7 +21,7 @@ export default defineConfig([
     },
   },
   {
-    files: ["**/*.ts"],
+    files: ["**/*.{ts,js}"],
     extends: [
       js.configs.recommended,
       tseslint.configs.strictTypeChecked,
@@ -100,7 +101,7 @@ export default defineConfig([
     },
   },
   {
-    files: ["*.config.ts"],
+    files: ["*.config.{ts,js}"],
     languageOptions: {
       globals: globals.node,
     },
