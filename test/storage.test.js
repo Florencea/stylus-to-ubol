@@ -1,4 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import assert from "node:assert/strict";
+import { afterEach, beforeEach, describe, it } from "node:test";
+import { ZodError } from "zod";
 import {
   clearStoredBaseConfig,
   getLocalStorage,
@@ -7,38 +9,38 @@ import {
   loadStoredBaseConfig,
   saveStoredBaseConfig,
   STORAGE_KEY_UBOL_BASE,
-} from "../src/storage.ts";
+} from "../src/storage.js";
 
-class MemoryStorage implements Storage {
-  private readonly store = new Map<string, string>();
+class MemoryStorage {
+  #store = new Map();
 
-  get length(): number {
-    return this.store.size;
+  get length() {
+    return this.#store.size;
   }
 
-  clear(): void {
-    this.store.clear();
+  clear() {
+    this.#store.clear();
   }
 
-  getItem(key: string): string | null {
-    return this.store.get(key) ?? null;
+  getItem(key) {
+    return this.#store.get(key) ?? null;
   }
 
-  key(index: number): string | null {
-    return Array.from(this.store.keys())[index] ?? null;
+  key(index) {
+    return Array.from(this.#store.keys())[index] ?? null;
   }
 
-  removeItem(key: string): void {
-    this.store.delete(key);
+  removeItem(key) {
+    this.#store.delete(key);
   }
 
-  setItem(key: string, value: string): void {
-    this.store.set(key, value);
+  setItem(key, value) {
+    this.#store.set(key, value);
   }
 }
 
 describe("Storage Service", () => {
-  let originalStorageDescriptor: PropertyDescriptor | undefined;
+  let originalStorageDescriptor;
 
   beforeEach(() => {
     originalStorageDescriptor = Object.getOwnPropertyDescriptor(
@@ -66,12 +68,12 @@ describe("Storage Service", () => {
   });
 
   it("checks localStorage availability accurately", () => {
-    expect(isLocalStorageAvailable()).toBe(true);
+    assert.equal(isLocalStorageAvailable(), true);
   });
 
   it("returns null when no base config is stored", () => {
-    expect(loadStoredBaseConfig()).toBeNull();
-    expect(isCacheAvailable()).toBe(false);
+    assert.equal(loadStoredBaseConfig(), null);
+    assert.equal(isCacheAvailable(), false);
   });
 
   it("saves and loads base config correctly", () => {
@@ -79,30 +81,35 @@ describe("Storage Service", () => {
     const fileName = "test-ubol.json";
 
     const saved = saveStoredBaseConfig(rawText, fileName);
-    expect(saved).toBe(true);
-    expect(isCacheAvailable()).toBe(true);
+    assert.equal(saved, true);
+    assert.equal(isCacheAvailable(), true);
 
     const loaded = loadStoredBaseConfig();
-    expect(loaded).not.toBeNull();
-    expect(loaded?.rawText).toBe(rawText);
-    expect(loaded?.fileName).toBe(fileName);
-    expect(typeof loaded?.savedAt).toBe("number");
+    assert.notEqual(loaded, null);
+    assert.equal(loaded.rawText, rawText);
+    assert.equal(loaded.fileName, fileName);
+    assert.equal(typeof loaded.savedAt, "number");
+  });
+
+  it("throws ZodError when saveStoredBaseConfig receives invalid types", () => {
+    assert.throws(() => saveStoredBaseConfig(123, "test.json"), ZodError);
+    assert.throws(() => saveStoredBaseConfig("{}", null), ZodError);
   });
 
   it("clears stored base config correctly", () => {
     saveStoredBaseConfig("{}", "dummy.json");
-    expect(isCacheAvailable()).toBe(true);
+    assert.equal(isCacheAvailable(), true);
 
     clearStoredBaseConfig();
-    expect(loadStoredBaseConfig()).toBeNull();
-    expect(isCacheAvailable()).toBe(false);
+    assert.equal(loadStoredBaseConfig(), null);
+    assert.equal(isCacheAvailable(), false);
   });
 
   it("handles corrupted JSON in localStorage gracefully and cleans up", () => {
     const storage = getLocalStorage();
     storage?.setItem(STORAGE_KEY_UBOL_BASE, "invalid json {");
-    expect(loadStoredBaseConfig()).toBeNull();
-    expect(storage?.getItem(STORAGE_KEY_UBOL_BASE)).toBeNull();
+    assert.equal(loadStoredBaseConfig(), null);
+    assert.equal(storage?.getItem(STORAGE_KEY_UBOL_BASE), null);
   });
 
   it("handles invalid schema shape in localStorage gracefully and cleans up", () => {
@@ -111,7 +118,7 @@ describe("Storage Service", () => {
       STORAGE_KEY_UBOL_BASE,
       JSON.stringify({ wrongField: 123 }),
     );
-    expect(loadStoredBaseConfig()).toBeNull();
-    expect(storage?.getItem(STORAGE_KEY_UBOL_BASE)).toBeNull();
+    assert.equal(loadStoredBaseConfig(), null);
+    assert.equal(storage?.getItem(STORAGE_KEY_UBOL_BASE), null);
   });
 });

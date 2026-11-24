@@ -22,11 +22,5 @@
   },
   "[markdown]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
-  },
-  "[typescript]": {
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
-  },
-  "js/ts.experimental.useTsgo": false,
-  "js/ts.preferences.preferTypeOnlyAutoImports": true,
-  "js/ts.tsdk.path": "node_modules/typescript"
+  }
 }

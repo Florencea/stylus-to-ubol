@@ -11,7 +11,7 @@ A serverless, pure client-side one-way compiler converting Stylus export JSON in
 1. **Unidirectional Compilation Pipeline**
    - Stylus JSON export is the sole Single Source of Truth (SSOT).
    - Strictly one-way conversion: Stylus JSON compiles directly to uBOL JSON configuration backups (`my-ubol-settings.json`).
-   - Zero intermediate `.css` file persistence on disk; all AST parsing and transformations run in-memory via `css-tree`.
+   - Zero intermediate `.css` file persistence on disk; all AST parsing and transformations run in-memory via `css-tree` subpath imports (`parser`, `generator`, `walker`) with fail-fast `zod` runtime contracts.
 
 2. **Static Client-Side Interface (`index.html`)**
    - Centered card interface for uploading `stylus.json` via file selection or drag-and-drop.
@@ -29,12 +29,13 @@ A serverless, pure client-side one-way compiler converting Stylus export JSON in
 
 ### 1. Data Contract
 
-```ts
-export interface UbolConfig {
-  customFilters: [string, string[]][];
-  sandboxFilters: string[];
-  [key: string]: unknown;
-}
+Validated at runtime by `UbolConfigSchema` (`zod`):
+
+```js
+export const UbolConfigSchema = z.looseObject({
+  customFilters: z.array(z.tuple([z.string(), z.array(z.string())])),
+  sandboxFilters: z.array(z.string()),
+});
 ```
 
 - **`customFilters`**: Pure cosmetic hide rules, grouped by hostname: `[domain, [selector1, selector2, ...]]`.
@@ -50,31 +51,32 @@ stylus-to-ubol/
 ├── .github/
 │   └── workflows/
 │       └── deploy.yml     # GitHub Pages deployment workflow
+├── scripts/
+│   ├── build.js           # Rolldown JS-only bundler & inline CSS HTML build
+│   └── serve.js           # Node built-in static server (preview, watch, E2E)
 ├── src/
-│   ├── compiler.ts        # Unified in-memory compiler engine & statistics
-│   ├── main.ts            # UI event controller & download trigger
-│   ├── storage.ts         # Browser localStorage persistence & Zod validation
-│   └── style.css          # Minimalist styles
+│   ├── compiler.js        # Unified in-memory compiler engine & Zod contracts
+│   ├── main.js            # UI event controller, DOM guards & download trigger
+│   ├── storage.js         # Browser localStorage persistence & Zod validation
+│   └── style.css          # Minimalist styles (inlined into dist/index.html)
 ├── test/
-│   ├── compiler.test.ts   # Vitest unit tests for compiler engine
-│   ├── storage.test.ts    # Vitest unit tests for storage persistence
+│   ├── compiler.test.js   # node:test unit tests for compiler & Zod contracts
+│   ├── storage.test.js    # node:test unit tests for storage persistence
 │   └── e2e/
-│       └── app.test.ts    # Vitest browser-mode (Chromium) E2E integration tests
+│       └── app.test.js    # Native Playwright Chromium E2E tests against dist/
 ├── .npmrc                 # Strict npm supply-chain & lockfile configuration
 ├── .prettierignore        # Prettier ignore patterns
-├── eslint.config.js       # Strict ESLint 10 flat configuration (// @ts-check)
-├── index.html             # Client-side interface
+├── eslint.config.js       # Strict ESLint 10 flat configuration
+├── index.html             # Client-side interface template
 ├── package-lock.json      # Exact npm dependency lockfile
-├── package.json           # Shared scripts and pinned dependencies
-├── tsconfig.json          # Project references TypeScript configuration
-└── vite.config.ts         # Vite build & Vitest dual-project test configuration
+└── package.json           # Shared scripts and pinned dependencies
 ```
 
 ## Quick Start
 
 ### Prerequisites
 
-- Node.js Active LTS (validated against dependency `engines` ranges via `.npmrc` `engine-strict=true`, currently `^22.12.0 || ^24.0.0 || >=26.0.0`)
+- Node.js Active LTS (validated against dependency `engines` ranges via `.npmrc` `engine-strict=true`)
 - `npm`
 
 ```bash
@@ -89,11 +91,11 @@ The project enforces a strict `.npmrc` policy (`ignore-scripts=true`, `save-exac
 ### Inner Loop: Static & Unit Checks
 
 ```bash
-npm run typecheck && npm run lint && npm run format:check
+npm run lint && npm run format:check
 npm run test:unit
 ```
 
-Executes TypeScript 6 `tsc -b --pretty false`, ESLint (`strictTypeChecked` & `stylisticTypeChecked`, `--max-warnings 0`), Prettier formatting check, and Vitest unit tests.
+Executes ESLint 10 (`--max-warnings 0`, `noInlineConfig: true`), Prettier formatting check, and Node built-in `node:test` unit tests.
 
 ### Complete Verification Gate (`verify`)
 
@@ -103,11 +105,10 @@ npm run verify
 
 Executes:
 
-1. `typecheck` (TypeScript 6 `tsc -b --pretty false`)
-2. `lint` (ESLint `strictTypeChecked` + `stylisticTypeChecked`, `--max-warnings 0`)
-3. `format:check` (Prettier formatting check)
-4. `build` (Vite production bundle verification)
-5. `npm test` (Unit & Playwright Chromium Browser tests)
+1. `lint` (ESLint 10, `--max-warnings 0`)
+2. `format:check` (Prettier formatting check)
+3. `build` (`rolldown` JS bundle + inlined CSS HTML output in `dist/`)
+4. `npm test` (`node:test` unit suite + Playwright Chromium E2E tests against `dist/`)
 
 ### Deployment Workflow
 
@@ -118,20 +119,19 @@ Executes:
 
 | Script                 | Description                                                        |
 | :--------------------- | :----------------------------------------------------------------- |
-| `npm run dev`          | Start local Vite development server                                |
-| `npm run build`        | Build production bundle with Vite                                  |
-| `npm run preview`      | Preview production build locally                                   |
-| `npm run typecheck`    | Run strict TypeScript 6 project build checks (`tsc -b`)            |
+| `npm run dev`          | Build, watch `src/` and `index.html`, and serve `dist/` locally    |
+| `npm run build`        | Bundle JS with `rolldown` and emit static `dist/` with inlined CSS |
+| `npm run preview`      | Serve built `dist/` locally via Node HTTP server                   |
 | `npm run lint`         | Run strict ESLint checks (`--max-warnings 0`)                      |
 | `npm run lint:fix`     | Run ESLint auto-fix                                                |
 | `npm run lint:ci`      | Check GitHub Actions workflows with `actionlint`                   |
 | `npm run format`       | Format files with Prettier                                         |
 | `npm run format:check` | Verify formatting with Prettier                                    |
-| `npm test`             | Run all Vitest projects (`unit` and `e2e`)                         |
-| `npm run test:unit`    | Run Vitest unit test project                                       |
-| `npm run test:e2e`     | Run Vitest Browser Mode (`@vitest/browser-playwright`) E2E project |
+| `npm test`             | Run all unit and Playwright E2E test suites                        |
+| `npm run test:unit`    | Run `node:test` unit tests                                         |
+| `npm run test:e2e`     | Run native Playwright Chromium E2E tests against `dist/`           |
 | `npm run test:setup`   | Install Playwright Chromium browser binaries                       |
-| `npm run verify`       | Complete verification gate (typecheck, lint, format, build, test)  |
+| `npm run verify`       | Complete verification gate (lint, format, build, unit & E2E tests) |
 
 ## Guidelines
 

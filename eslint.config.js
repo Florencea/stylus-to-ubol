@@ -1,15 +1,11 @@
-// @ts-check
 import js from "@eslint/js";
-import vitest from "@vitest/eslint-plugin";
 import { defineConfig, globalIgnores } from "eslint/config";
 import globals from "globals";
-import tseslint from "typescript-eslint";
 
 export default defineConfig([
   globalIgnores([
     "dist",
     ".cache",
-    ".vitest",
     "test-results",
     "playwright-report",
     "blob-report",
@@ -21,89 +17,48 @@ export default defineConfig([
     },
   },
   {
-    files: ["**/*.{ts,js}"],
-    extends: [
-      js.configs.recommended,
-      tseslint.configs.strictTypeChecked,
-      tseslint.configs.stylisticTypeChecked,
-    ],
+    files: ["**/*.js"],
+    extends: [js.configs.recommended],
     languageOptions: {
-      parserOptions: {
-        projectService: true,
-        tsconfigRootDir: import.meta.dirname,
-      },
+      ecmaVersion: 2023,
+      sourceType: "module",
     },
     rules: {
+      "array-callback-return": "error",
+      "consistent-return": "error",
       eqeqeq: ["error", "always"],
-      "@typescript-eslint/ban-ts-comment": [
-        "error",
-        {
-          "ts-ignore": true,
-          "ts-expect-error": true,
-          "ts-nocheck": true,
-          "ts-check": false,
-        },
-      ],
-      "@typescript-eslint/consistent-type-exports": [
-        "error",
-        { fixMixedExportsWithInlineTypeSpecifier: true },
-      ],
-      "@typescript-eslint/consistent-type-imports": [
-        "error",
-        { prefer: "type-imports", fixStyle: "inline-type-imports" },
-      ],
-      "@typescript-eslint/no-shadow": "error",
-      "@typescript-eslint/no-unnecessary-qualifier": "error",
-      "@typescript-eslint/no-unsafe-type-assertion": "error",
-      "@typescript-eslint/no-useless-empty-export": "error",
-      "@typescript-eslint/prefer-readonly": "error",
-      "@typescript-eslint/promise-function-async": "error",
-      "@typescript-eslint/require-array-sort-compare": "error",
-      "@typescript-eslint/strict-boolean-expressions": "error",
-      "@typescript-eslint/switch-exhaustiveness-check": "error",
+      "no-implicit-coercion": "error",
+      "no-shadow": "error",
+      "no-var": "error",
+      "prefer-const": "error",
     },
   },
   {
-    files: ["src/compiler.ts"],
+    files: ["src/compiler.js"],
     languageOptions: {
       globals: globals.es2023,
     },
   },
   {
-    files: ["src/main.ts", "src/storage.ts"],
+    files: ["src/main.js", "src/storage.js"],
     languageOptions: {
       globals: globals.browser,
     },
   },
   {
-    files: ["test/**/*.ts"],
-    plugins: {
-      vitest,
-    },
-    rules: {
-      ...vitest.configs.recommended.rules,
-    },
-  },
-  {
-    files: ["test/**/*.ts"],
+    files: ["scripts/**/*.js", "test/**/*.js", "*.config.js"],
     ignores: ["test/e2e/**"],
     languageOptions: {
       globals: globals.node,
     },
   },
   {
-    files: ["test/e2e/**/*.ts"],
+    files: ["test/e2e/**/*.js"],
     languageOptions: {
       globals: {
         ...globals.browser,
         ...globals.node,
       },
-    },
-  },
-  {
-    files: ["*.config.{ts,js}"],
-    languageOptions: {
-      globals: globals.node,
     },
   },
 ]);

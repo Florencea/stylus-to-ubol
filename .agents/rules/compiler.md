@@ -1,12 +1,12 @@
 ---
 trigger: glob
-globs: "src/compiler.ts, test/compiler.test.ts"
+globs: "src/compiler.js, test/compiler.test.js"
 description: Architectural invariants and AST transformation rules for the Stylus-to-uBOL compiler engine.
 ---
 
 # Compiler Engine & Rules Transformation Standards
 
-Domain-specific AST compilation and filter-synthesis guidelines for `src/compiler.ts`.
+Domain-specific AST compilation and filter-synthesis guidelines for `src/compiler.js`.
 
 ## 1. Rules Splitting & Routing Invariants
 
@@ -18,14 +18,15 @@ Domain-specific AST compilation and filter-synthesis guidelines for `src/compile
 
 ## 2. AST Parsing & @media Processing
 
-- **css-tree In-Memory Traversal**: Traverse parsed AST while maintaining an `@media` stack joined by `and` -> `:matches-media(...)`.
+- **css-tree Subpath In-Memory Traversal**: Import `css-tree/parser`, `css-tree/generator`, and `css-tree/walker` directly (avoiding unused MDN lexer tables) while maintaining an `@media` stack joined by `and` -> `:matches-media(...)`.
 - **Pseudo-Element Separation**:
   - Separate pseudo-elements (`::before`, `::after`, `:before`, `:after`, `first-letter`, `first-line`) from the base selector.
   - When a pseudo-element is present on a procedural rule, omit the `:matches-media` suffix to preserve uBOL selector compatibility.
 - **Declaration Serialization**:
   - Declarations preserve property, trimmed value, and `!important` flag (`prop:value !important` or `prop:value`).
 
-## 3. Schema Parsing & Base Config Merging
+## 3. Fail-Fast Zod Contracts & Base Config Merging
 
 - **Zod Data Contracts**: Stylus exports are parsed using `StylusExportSchema` supporting legacy tuple format, flat array, and wrapped object formats.
+- **Public API Runtime Validation**: Validate inputs at public function entrypoints (`serializeDeclaration`, `splitSelectorAndPseudoElement`, `buildUboRules`, `computeConfigStats`, `parseUbolBaseConfig`, `compileStylus`) via Zod so type mismatches throw immediately; keep internal walk loops free of redundant re-validation.
 - **Base Config Integration**: When a base `my-ubol-settings.json` is supplied, merge generated filters while preserving upstream keys; otherwise fallback to the default template (`version: "2026.920.1710"`).

@@ -1,31 +1,26 @@
-import {
-  generate,
-  parse,
-  walk,
-  type CssNode,
-  type Declaration,
-  type Selector,
-} from "css-tree";
+import generate from "css-tree/generator";
+import parse from "css-tree/parser";
+import walk from "css-tree/walker";
 import { z } from "zod";
 
 /* =========================================================================
    1. Data Contracts & Schemas
    ========================================================================= */
 
-const StylusSectionSchema = z.object({
+export const StylusSectionSchema = z.object({
   code: z.string(),
   domains: z.array(z.string()).optional(),
 });
 
-const StylusStyleItemSchema = z.looseObject({
+export const StylusStyleItemSchema = z.looseObject({
   sections: z.array(StylusSectionSchema),
 });
 
-const StylusSettingsItemSchema = z.object({
+export const StylusSettingsItemSchema = z.object({
   settings: z.record(z.string(), z.unknown()),
 });
 
-const StylusExportSchema = z.union([
+export const StylusExportSchema = z.union([
   z
     .tuple([StylusSettingsItemSchema])
     .rest(StylusStyleItemSchema)
@@ -39,36 +34,54 @@ const StylusExportSchema = z.union([
   StylusStyleItemSchema.transform((val) => [val]),
 ]);
 
-type StylusExport = z.infer<typeof StylusExportSchema>;
+export const StylusRuleSchema = z.object({
+  domain: z.string(),
+  code: z.string(),
+});
 
-export interface StylusRule {
-  domain: string;
-  code: string;
-}
+export const StylusRulesSchema = z.array(StylusRuleSchema);
 
-export interface UbolConfig {
-  customFilters: [string, string[]][];
-  sandboxFilters: string[];
-  [key: string]: unknown;
-}
+export const BaseConfigObjectSchema = z.record(z.string(), z.unknown());
 
-export interface ConversionStats {
-  domainCount: number;
-  hideRuleCount: number;
-  styleRuleCount: number;
-}
+export const UbolConfigSchema = z.looseObject({
+  customFilters: z.array(z.tuple([z.string(), z.array(z.string())])),
+  sandboxFilters: z.array(z.string()),
+});
 
-export interface ConversionResult {
-  config: UbolConfig;
-  stats: ConversionStats;
-}
+const CssDeclarationNodeSchema = z.looseObject({
+  type: z.literal("Declaration"),
+  property: z.string(),
+  value: z.looseObject({ type: z.string() }),
+  important: z.union([z.boolean(), z.string()]),
+});
+
+const CssSelectorNodeSchema = z.looseObject({
+  type: z.literal("Selector"),
+  children: z.custom(
+    (val) =>
+      val !== null &&
+      typeof val === "object" &&
+      Symbol.iterator in val &&
+      typeof val[Symbol.iterator] === "function",
+    { message: "Expected an iterable Selector children list." },
+  ),
+});
+
+const RawTextSchema = z.string();
+
+const PSEUDO_ELEMENT_LEGACY_NAMES = new Set([
+  "before",
+  "after",
+  "first-letter",
+  "first-line",
+]);
 
 /* =========================================================================
    2. Stylus Rule Extraction
    ========================================================================= */
 
-const loadStylusCSS = (styles: StylusExport): StylusRule[] => {
-  const rules: StylusRule[] = [];
+const loadStylusCSS = (styles) => {
+  const rules = [];
   for (const item of styles) {
     for (const { domains, code } of item.sections) {
       if (domains !== undefined && domains.length > 0) {
@@ -83,7 +96,7 @@ const loadStylusCSS = (styles: StylusExport): StylusRule[] => {
   return rules;
 };
 
-const parseStylusRules = (json: unknown): StylusRule[] => {
+const parseStylusRules = (json) => {
   return loadStylusCSS(StylusExportSchema.parse(json));
 };
 
@@ -91,24 +104,27 @@ const parseStylusRules = (json: unknown): StylusRule[] => {
    3. CSS AST Transformation & uBO Rule Synthesizer
    ========================================================================= */
 
-export const serializeDeclaration = (declNode: Declaration): string => {
+const serializeDeclarationInternal = (declNode) => {
   const prop = declNode.property;
   const value = generate(declNode.value).trim();
   const isImportant = Boolean(declNode.important);
   return isImportant ? `${prop}:${value} !important` : `${prop}:${value}`;
 };
 
-export const splitSelectorAndPseudoElement = (
-  selNode: Selector,
-): { baseSelector: string; pseudoElement: string } => {
-  const baseNodes: CssNode[] = [];
+export const serializeDeclaration = (declNode) => {
+  const validated = CssDeclarationNodeSchema.parse(declNode);
+  return serializeDeclarationInternal(validated);
+};
+
+const splitSelectorAndPseudoElementInternal = (selNode) => {
+  const baseNodes = [];
   let pseudoElement = "";
 
   for (const child of selNode.children) {
     if (
       child.type === "PseudoElementSelector" ||
       (child.type === "PseudoClassSelector" &&
-        ["before", "after", "first-letter", "first-line"].includes(child.name))
+        PSEUDO_ELEMENT_LEGACY_NAMES.has(child.name))
     ) {
       pseudoElement = generate(child).trim();
     } else {
@@ -123,19 +139,27 @@ export const splitSelectorAndPseudoElement = (
   return { baseSelector, pseudoElement };
 };
 
-export const buildUboRules = (
-  rules: StylusRule[],
-  baseConfig?: Record<string, unknown> | null,
-): UbolConfig => {
-  const sandboxFilters: string[] = [];
-  const customFiltersMap = new Map<string, string[]>();
+export const splitSelectorAndPseudoElement = (selNode) => {
+  const validated = CssSelectorNodeSchema.parse(selNode);
+  return splitSelectorAndPseudoElementInternal(validated);
+};
 
-  for (const { domain, code } of rules) {
+export const buildUboRules = (rules, baseConfig) => {
+  const validatedRules = StylusRulesSchema.parse(rules);
+  const validatedBaseConfig =
+    baseConfig !== undefined && baseConfig !== null
+      ? BaseConfigObjectSchema.parse(baseConfig)
+      : null;
+
+  const sandboxFilters = [];
+  const customFiltersMap = new Map();
+
+  for (const { domain, code } of validatedRules) {
     const ast = parse(code);
-    const mediaStack: string[] = [];
+    const mediaStack = [];
 
     walk(ast, {
-      enter: (node: CssNode) => {
+      enter: (node) => {
         // 1. Maintain @media Stack
         if (
           node.type === "Atrule" &&
@@ -149,12 +173,12 @@ export const buildUboRules = (
 
         // 2. Handle CSS Rule
         if (node.type === "Rule") {
-          const declarations: string[] = [];
+          const declarations = [];
 
           walk(node.block, {
             visit: "Declaration",
             enter(decl) {
-              declarations.push(serializeDeclaration(decl));
+              declarations.push(serializeDeclarationInternal(decl));
             },
           });
 
@@ -173,7 +197,7 @@ export const buildUboRules = (
             selectorList.children.forEach((selNode) => {
               if (selNode.type === "Selector") {
                 const { baseSelector, pseudoElement } =
-                  splitSelectorAndPseudoElement(selNode);
+                  splitSelectorAndPseudoElementInternal(selNode);
                 const rawSelector = generate(selNode).trim();
 
                 // Effective procedural selector (omit mediaSuffix if pseudo-element is present)
@@ -204,7 +228,7 @@ export const buildUboRules = (
         }
       },
 
-      leave: (node: CssNode) => {
+      leave: (node) => {
         if (node.type === "Atrule" && node.name === "media") {
           mediaStack.pop();
         }
@@ -212,11 +236,11 @@ export const buildUboRules = (
     });
   }
 
-  const customFilters: [string, string[]][] = Array.from(customFiltersMap);
+  const customFilters = Array.from(customFiltersMap);
 
-  if (baseConfig !== undefined && baseConfig !== null) {
+  if (validatedBaseConfig !== null) {
     return {
-      ...baseConfig,
+      ...validatedBaseConfig,
       customFilters,
       sandboxFilters,
     };
@@ -239,11 +263,12 @@ export const buildUboRules = (
    4. Statistics & High-Level Compiler API
    ========================================================================= */
 
-export const computeConfigStats = (config: UbolConfig): ConversionStats => {
-  const domainSet = new Set<string>();
+export const computeConfigStats = (config) => {
+  const validatedConfig = UbolConfigSchema.parse(config);
+  const domainSet = new Set();
   let hideRuleCount = 0;
 
-  for (const [domain, selectors] of config.customFilters) {
+  for (const [domain, selectors] of validatedConfig.customFilters) {
     const trimmed = domain.trim();
     if (trimmed.length > 0) {
       domainSet.add(trimmed);
@@ -251,7 +276,7 @@ export const computeConfigStats = (config: UbolConfig): ConversionStats => {
     hideRuleCount += selectors.length;
   }
 
-  for (const rule of config.sandboxFilters) {
+  for (const rule of validatedConfig.sandboxFilters) {
     const hashIdx = rule.indexOf("##");
     if (hashIdx !== -1) {
       const domainPart = rule.slice(0, hashIdx).trim();
@@ -269,19 +294,18 @@ export const computeConfigStats = (config: UbolConfig): ConversionStats => {
   return {
     domainCount: domainSet.size,
     hideRuleCount,
-    styleRuleCount: config.sandboxFilters.length,
+    styleRuleCount: validatedConfig.sandboxFilters.length,
   };
 };
 
-export const parseUbolBaseConfig = (
-  rawBaseText: string,
-): Record<string, unknown> => {
-  const trimmed = rawBaseText.trim();
+export const parseUbolBaseConfig = (rawBaseText) => {
+  const validatedText = RawTextSchema.parse(rawBaseText);
+  const trimmed = validatedText.trim();
   if (trimmed.length === 0) {
     throw new Error("Uploaded uBlock config file is empty.");
   }
 
-  let parsed: unknown;
+  let parsed;
   try {
     parsed = JSON.parse(trimmed);
   } catch (err) {
@@ -291,7 +315,6 @@ export const parseUbolBaseConfig = (
     );
   }
 
-  const BaseConfigObjectSchema = z.record(z.string(), z.unknown());
   const parseResult = BaseConfigObjectSchema.safeParse(parsed);
   if (!parseResult.success) {
     throw new Error(
@@ -302,16 +325,14 @@ export const parseUbolBaseConfig = (
   return parseResult.data;
 };
 
-export const compileStylus = (
-  rawText: string,
-  baseConfigInput?: string | Record<string, unknown> | null,
-): ConversionResult => {
-  const trimmed = rawText.trim();
+export const compileStylus = (rawText, baseConfigInput) => {
+  const validatedText = RawTextSchema.parse(rawText);
+  const trimmed = validatedText.trim();
   if (trimmed.length === 0) {
     throw new Error("Uploaded file is empty.");
   }
 
-  let parsed: unknown;
+  let parsed;
   try {
     parsed = JSON.parse(trimmed);
   } catch (err) {
@@ -323,7 +344,7 @@ export const compileStylus = (
     );
   }
 
-  let rules: StylusRule[];
+  let rules;
   try {
     rules = parseStylusRules(parsed);
   } catch (err) {
@@ -341,19 +362,20 @@ export const compileStylus = (
     );
   }
 
-  let resolvedBaseConfig: Record<string, unknown> | null = null;
+  let resolvedBaseConfig = null;
   if (typeof baseConfigInput === "string") {
     const baseTrimmed = baseConfigInput.trim();
     if (baseTrimmed.length > 0) {
       resolvedBaseConfig = parseUbolBaseConfig(baseTrimmed);
     }
-  } else if (typeof baseConfigInput === "object" && baseConfigInput !== null) {
-    if (Array.isArray(baseConfigInput)) {
+  } else if (baseConfigInput !== undefined && baseConfigInput !== null) {
+    const baseResult = BaseConfigObjectSchema.safeParse(baseConfigInput);
+    if (!baseResult.success) {
       throw new Error(
         "Invalid uBlock config JSON: Expected a JSON object configuration.",
       );
     }
-    resolvedBaseConfig = baseConfigInput;
+    resolvedBaseConfig = baseResult.data;
   }
 
   const config = buildUboRules(rules, resolvedBaseConfig);

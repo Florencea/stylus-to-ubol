@@ -1,46 +1,55 @@
-import {
-  compileStylus,
-  parseUbolBaseConfig,
-  type ConversionResult,
-  type UbolConfig,
-} from "./compiler.ts";
+import { z } from "zod";
+import { compileStylus, parseUbolBaseConfig } from "./compiler.js";
 import {
   clearStoredBaseConfig,
   loadStoredBaseConfig,
   saveStoredBaseConfig,
-  type StoredBaseConfig,
-} from "./storage.ts";
+} from "./storage.js";
 
-export type BaseSource = "default" | "cached" | "uploaded";
+export const BaseSourceSchema = z.enum(["default", "cached", "uploaded"]);
 
-export const triggerDownload = (filename: string, content: string): void => {
-  const blob = new Blob([content], { type: "application/json;charset=utf-8" });
+const DownloadFilenameSchema = z.string().min(1);
+const DownloadContentSchema = z.string();
+
+const queryInput = (selector) => {
+  const el = document.querySelector(selector);
+  return el instanceof HTMLInputElement ? el : null;
+};
+
+const queryButton = (selector) => {
+  const el = document.querySelector(selector);
+  return el instanceof HTMLButtonElement ? el : null;
+};
+
+export const triggerDownload = (filename, content) => {
+  const validFilename = DownloadFilenameSchema.parse(filename);
+  const validContent = DownloadContentSchema.parse(content);
+
+  const blob = new Blob([validContent], {
+    type: "application/json;charset=utf-8",
+  });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = filename;
+  anchor.download = validFilename;
   document.body.appendChild(anchor);
   anchor.click();
   document.body.removeChild(anchor);
   URL.revokeObjectURL(url);
 };
 
-export const setupConverterApp = (): void => {
+export const setupConverterApp = () => {
   // Stylus upload elements
   const dropzone = document.getElementById("stylus-dropzone");
-  const fileInput =
-    document.querySelector<HTMLInputElement>("#stylus-file-input");
+  const fileInput = queryInput("#stylus-file-input");
   const uploadBtn = document.getElementById("btn-upload-stylus");
   const fileStatus = document.getElementById("file-status");
   const fileName = document.getElementById("file-name");
 
   // Source selector radio inputs & labels
-  const radioDefault =
-    document.querySelector<HTMLInputElement>("#source-default");
-  const radioCached =
-    document.querySelector<HTMLInputElement>("#source-cached");
-  const radioUploaded =
-    document.querySelector<HTMLInputElement>("#source-uploaded");
+  const radioDefault = queryInput("#source-default");
+  const radioCached = queryInput("#source-cached");
+  const radioUploaded = queryInput("#source-uploaded");
 
   const labelDefault = document.getElementById("label-source-default");
   const labelCached = document.getElementById("label-source-cached");
@@ -51,21 +60,16 @@ export const setupConverterApp = (): void => {
 
   // Base config upload elements
   const baseDropzone = document.getElementById("base-dropzone");
-  const baseFileInput =
-    document.querySelector<HTMLInputElement>("#base-file-input");
+  const baseFileInput = queryInput("#base-file-input");
   const baseUploadBtn = document.getElementById("btn-upload-base");
-  const overwriteCacheCheckbox = document.querySelector<HTMLInputElement>(
-    "#overwrite-cache-checkbox",
-  );
+  const overwriteCacheCheckbox = queryInput("#overwrite-cache-checkbox");
 
   // Base file status & action elements
   const baseFileStatus = document.getElementById("base-file-status");
   const baseFileName = document.getElementById("base-file-name");
   const baseFileBadge = document.getElementById("base-file-badge");
-  const btnSaveCache =
-    document.querySelector<HTMLButtonElement>("#btn-save-cache");
-  const btnClearBase =
-    document.querySelector<HTMLButtonElement>("#btn-clear-base");
+  const btnSaveCache = queryButton("#btn-save-cache");
+  const btnClearBase = queryButton("#btn-clear-base");
 
   // Stats elements
   const statsPanel = document.getElementById("stats-panel");
@@ -75,24 +79,20 @@ export const setupConverterApp = (): void => {
   const statsBaseStatus = document.getElementById("stats-base-status");
 
   // Download & error elements
-  const btnDownload =
-    document.querySelector<HTMLButtonElement>("#btn-download");
+  const btnDownload = queryButton("#btn-download");
   const errorPanel = document.getElementById("error-panel");
   const errorMessage = document.getElementById("error-message");
 
-  let currentRawStylus: string | null = null;
-  let currentStylusName: string | null = null;
+  let currentRawStylus = null;
+  let currentStylusName = null;
 
-  let cachedBaseConfig: StoredBaseConfig | null = null;
-  let uploadedBaseConfig: { rawText: string; fileName: string } | null = null;
-  let activeBaseSource: BaseSource = "default";
+  let cachedBaseConfig = null;
+  let uploadedBaseConfig = null;
+  let activeBaseSource = "default";
 
-  let currentConfig: UbolConfig | null = null;
+  let currentConfig = null;
 
-  const getActiveBaseConfig = (): {
-    rawText: string;
-    fileName: string;
-  } | null => {
+  const getActiveBaseConfig = () => {
     if (activeBaseSource === "cached" && cachedBaseConfig !== null) {
       return {
         rawText: cachedBaseConfig.rawText,
@@ -108,7 +108,7 @@ export const setupConverterApp = (): void => {
     return null;
   };
 
-  const setDownloadButtonState = (enabled: boolean): void => {
+  const setDownloadButtonState = (enabled) => {
     if (btnDownload !== null) {
       btnDownload.disabled = !enabled;
       if (enabled) {
@@ -119,7 +119,7 @@ export const setupConverterApp = (): void => {
     }
   };
 
-  const showError = (err: unknown): void => {
+  const showError = (err) => {
     currentConfig = null;
     setDownloadButtonState(false);
 
@@ -134,7 +134,7 @@ export const setupConverterApp = (): void => {
     }
   };
 
-  const showSuccess = (name: string, result: ConversionResult): void => {
+  const showSuccess = (name, result) => {
     currentConfig = result.config;
 
     if (errorPanel !== null) errorPanel.hidden = true;
@@ -165,7 +165,7 @@ export const setupConverterApp = (): void => {
     setDownloadButtonState(true);
   };
 
-  const updateBaseSourceUI = (): void => {
+  const updateBaseSourceUI = () => {
     // Default option
     if (radioDefault !== null) {
       radioDefault.checked = activeBaseSource === "default";
@@ -265,7 +265,7 @@ export const setupConverterApp = (): void => {
     }
   };
 
-  const recompile = (): void => {
+  const recompile = () => {
     if (currentRawStylus === null || currentStylusName === null) {
       currentConfig = null;
       setDownloadButtonState(false);
@@ -285,11 +285,12 @@ export const setupConverterApp = (): void => {
     }
   };
 
-  const setBaseSource = (source: BaseSource): void => {
-    if (source === "cached" && cachedBaseConfig === null) return;
-    if (source === "uploaded" && uploadedBaseConfig === null) return;
+  const setBaseSource = (source) => {
+    const validSource = BaseSourceSchema.parse(source);
+    if (validSource === "cached" && cachedBaseConfig === null) return;
+    if (validSource === "uploaded" && uploadedBaseConfig === null) return;
 
-    activeBaseSource = source;
+    activeBaseSource = validSource;
     updateBaseSourceUI();
 
     if (currentRawStylus !== null) {
@@ -297,7 +298,7 @@ export const setupConverterApp = (): void => {
     }
   };
 
-  const processStylusFile = async (file: File): Promise<void> => {
+  const processStylusFile = async (file) => {
     try {
       const rawText = await file.text();
       const activeBase = getActiveBaseConfig();
@@ -310,7 +311,7 @@ export const setupConverterApp = (): void => {
     }
   };
 
-  const processBaseConfigFile = async (file: File): Promise<void> => {
+  const processBaseConfigFile = async (file) => {
     try {
       const rawText = await file.text();
       parseUbolBaseConfig(rawText);
@@ -341,7 +342,7 @@ export const setupConverterApp = (): void => {
     }
   };
 
-  const clearBaseConfig = (): void => {
+  const clearBaseConfig = () => {
     if (activeBaseSource === "cached") {
       clearStoredBaseConfig();
       cachedBaseConfig = null;

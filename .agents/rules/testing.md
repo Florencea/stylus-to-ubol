@@ -1,20 +1,19 @@
 ---
 trigger: glob
-globs: "test/**, **/*.test.ts"
-description: Testing standards for compiler AST assertions and in-memory browser E2E workflows.
+globs: "test/**, **/*.test.js"
+description: Testing standards for compiler AST assertions, Zod contract tests, and Chromium E2E workflows.
 ---
 
 # Testing Standards & Guidelines
 
 Testing standards tailored specifically for the `stylus-to-ubol` test suite.
 
-## 1. Compiler Unit Tests (`test/compiler.test.ts`)
+## 1. Unit Tests (`test/compiler.test.js`, `test/storage.test.js`)
 
-- **Strict AST Type Narrowing**: Use `assert` from `vitest` to narrow AST node types (e.g. `assert(ast.type === "StyleSheet")`) before inspecting children.
-- **No Conditional Expects**: Never wrap assertions inside `if` blocks or optional chaining guards; rely strictly on `assert` narrowing to ensure strict TypeScript inference and satisfy ESLint rules (`@vitest/eslint-plugin` `vitest/no-conditional-expect`).
+- **Node Built-In Runner**: Use `node:test` (`describe`, `it`, `beforeEach`, `afterEach`) and `node:assert/strict`.
+- **AST & Fail-Fast Zod Coverage**: Assert AST node types before inspecting children, and explicitly verify that invalid argument types throw `ZodError` at public API boundaries.
 
-## 2. In-Memory Browser E2E Tests (`test/e2e/app.test.ts`)
+## 2. Browser E2E Tests (`test/e2e/app.test.js`)
 
-- **DOM Mounting**: Mount clean DOM per test run using `DOMParser` on `index.html?raw`, inject into `document.body`, and initialize via `setupConverterApp()`.
-- **Synthetic File Uploads**: Mock file inputs by configuring `File` objects directly onto `HTMLInputElement.files` and dispatching synthetic `change` events.
-- **Asynchronous Tick**: Await `setTimeout(..., 50)` or microtasks to allow client-side `file.text()` promise chains to resolve before verifying UI state.
+- **Production Bundle Verification**: Start a local static server for `dist/` on an ephemeral port (`port: 0`) via `startStaticServer` from `scripts/serve.js`, then drive headless Chromium via native `playwright`.
+- **Real File Upload & Storage Isolation**: Clear `localStorage` and reload before each test, use Playwright `setInputFiles` for realistic file upload flows, and close browser and server handles cleanly in `after`.
