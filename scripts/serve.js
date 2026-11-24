@@ -1,15 +1,13 @@
-import { watch } from "node:fs";
-import { access, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { buildApp } from "./build.js";
 
 const ROOT_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
-const DEFAULT_DIST_DIR = path.join(ROOT_DIR, "dist");
+const DEFAULT_SITE_DIR = path.join(ROOT_DIR, "src");
 
 const MIME_TYPES = {
   ".css": "text/css; charset=utf-8",
@@ -37,7 +35,7 @@ const resolveSafePath = (rootDir, requestUrl) => {
 };
 
 export const startStaticServer = async ({
-  rootDir = DEFAULT_DIST_DIR,
+  rootDir = DEFAULT_SITE_DIR,
   port = 4173,
   host = "127.0.0.1",
 } = {}) => {
@@ -96,50 +94,13 @@ const isDirectExecution =
   pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url;
 
 if (isDirectExecution) {
-  const watchMode = process.argv.includes("--watch");
-
-  if (watchMode) {
-    await buildApp();
-  } else {
-    try {
-      await access(path.join(DEFAULT_DIST_DIR, "index.html"));
-    } catch {
-      await buildApp();
-    }
-  }
-
   const { url, close } = await startStaticServer({
-    rootDir: DEFAULT_DIST_DIR,
+    rootDir: DEFAULT_SITE_DIR,
     port: Number(process.env.PORT ?? 4173),
   });
-  console.log(`Serving dist/ at ${url}`);
-
-  const watchers = [];
-  if (watchMode) {
-    let timer = null;
-    const scheduleRebuild = () => {
-      if (timer !== null) clearTimeout(timer);
-      timer = setTimeout(() => {
-        void buildApp()
-          .then(() => {
-            console.log("Rebuilt dist/");
-          })
-          .catch((err) => {
-            console.error("Rebuild failed:", err);
-          });
-      }, 100);
-    };
-
-    watchers.push(
-      watch(path.join(ROOT_DIR, "src"), scheduleRebuild),
-      watch(path.join(ROOT_DIR, "index.html"), scheduleRebuild),
-    );
-  }
+  console.log(`Serving src/ at ${url}`);
 
   const shutdown = () => {
-    for (const watcher of watchers) {
-      watcher.close();
-    }
     void close().finally(() => {
       process.exit(0);
     });

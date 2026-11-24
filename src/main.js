@@ -1,15 +1,18 @@
-import { z } from "zod";
-import { compileStylus, parseUbolBaseConfig } from "./compiler.js";
+import {
+  compileStylus,
+  CssParseError,
+  parseUbolBaseConfig,
+} from "./compiler.js";
 import {
   clearStoredBaseConfig,
   loadStoredBaseConfig,
   saveStoredBaseConfig,
 } from "./storage.js";
-
-export const BaseSourceSchema = z.enum(["default", "cached", "uploaded"]);
-
-const DownloadFilenameSchema = z.string().min(1);
-const DownloadContentSchema = z.string();
+import {
+  parseBaseSource,
+  parseDownloadContent,
+  parseDownloadFilename,
+} from "./validate.js";
 
 const queryInput = (selector) => {
   const el = document.querySelector(selector);
@@ -22,8 +25,8 @@ const queryButton = (selector) => {
 };
 
 export const triggerDownload = (filename, content) => {
-  const validFilename = DownloadFilenameSchema.parse(filename);
-  const validContent = DownloadContentSchema.parse(content);
+  const validFilename = parseDownloadFilename(filename);
+  const validContent = parseDownloadContent(content);
 
   const blob = new Blob([validContent], {
     type: "application/json;charset=utf-8",
@@ -81,6 +84,7 @@ export const setupConverterApp = () => {
   // Download & error elements
   const btnDownload = queryButton("#btn-download");
   const errorPanel = document.getElementById("error-panel");
+  const errorTitle = document.getElementById("error-title");
   const errorMessage = document.getElementById("error-message");
 
   let currentRawStylus = null;
@@ -126,6 +130,12 @@ export const setupConverterApp = () => {
     if (statsPanel !== null) statsPanel.hidden = true;
 
     const message = err instanceof Error ? err.message : String(err);
+    if (errorTitle !== null) {
+      errorTitle.textContent =
+        err instanceof CssParseError
+          ? "CSS Syntax Error"
+          : "Invalid Stylus JSON";
+    }
     if (errorMessage !== null) {
       errorMessage.textContent = message;
     }
@@ -286,7 +296,7 @@ export const setupConverterApp = () => {
   };
 
   const setBaseSource = (source) => {
-    const validSource = BaseSourceSchema.parse(source);
+    const validSource = parseBaseSource(source);
     if (validSource === "cached" && cachedBaseConfig === null) return;
     if (validSource === "uploaded" && uploadedBaseConfig === null) return;
 

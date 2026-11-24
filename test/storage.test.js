@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
-import { ZodError } from "zod";
 import {
   clearStoredBaseConfig,
   getLocalStorage,
@@ -10,6 +9,7 @@ import {
   saveStoredBaseConfig,
   STORAGE_KEY_UBOL_BASE,
 } from "../src/storage.js";
+import { ValidationError } from "../src/validate.js";
 
 class MemoryStorage {
   #store = new Map();
@@ -91,9 +91,12 @@ describe("Storage Service", () => {
     assert.equal(typeof loaded.savedAt, "number");
   });
 
-  it("throws ZodError when saveStoredBaseConfig receives invalid types", () => {
-    assert.throws(() => saveStoredBaseConfig(123, "test.json"), ZodError);
-    assert.throws(() => saveStoredBaseConfig("{}", null), ZodError);
+  it("throws ValidationError when saveStoredBaseConfig receives invalid types", () => {
+    assert.throws(
+      () => saveStoredBaseConfig(123, "test.json"),
+      ValidationError,
+    );
+    assert.throws(() => saveStoredBaseConfig("{}", null), ValidationError);
   });
 
   it("clears stored base config correctly", () => {

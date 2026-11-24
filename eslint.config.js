@@ -3,13 +3,7 @@ import { defineConfig, globalIgnores } from "eslint/config";
 import globals from "globals";
 
 export default defineConfig([
-  globalIgnores([
-    "dist",
-    ".cache",
-    "test-results",
-    "playwright-report",
-    "blob-report",
-  ]),
+  globalIgnores([".cache", "test-results", "playwright-report", "blob-report"]),
   {
     linterOptions: {
       noInlineConfig: true,
@@ -34,7 +28,7 @@ export default defineConfig([
     },
   },
   {
-    files: ["src/compiler.js"],
+    files: ["src/compiler.js", "src/css-parser.js", "src/validate.js"],
     languageOptions: {
       globals: globals.es2023,
     },

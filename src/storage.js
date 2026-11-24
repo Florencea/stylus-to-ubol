@@ -1,12 +1,9 @@
-import { z } from "zod";
+import {
+  parseStoredBaseConfig,
+  safeParseStoredBaseConfig,
+} from "./validate.js";
 
 export const STORAGE_KEY_UBOL_BASE = "stylus_to_ubol_base_config";
-
-export const StoredBaseConfigSchema = z.object({
-  rawText: z.string(),
-  fileName: z.string(),
-  savedAt: z.number(),
-});
 
 export const getLocalStorage = () => {
   try {
@@ -47,7 +44,7 @@ export const loadStoredBaseConfig = () => {
       return null;
     }
 
-    const result = StoredBaseConfigSchema.safeParse(parsed);
+    const result = safeParseStoredBaseConfig(parsed);
     if (!result.success) {
       storage.removeItem(STORAGE_KEY_UBOL_BASE);
       return null;
@@ -59,7 +56,7 @@ export const loadStoredBaseConfig = () => {
 };
 
 export const saveStoredBaseConfig = (rawText, fileName) => {
-  const data = StoredBaseConfigSchema.parse({
+  const data = parseStoredBaseConfig({
     rawText,
     fileName,
     savedAt: Date.now(),

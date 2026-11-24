@@ -1,57 +1,57 @@
-import parse from "css-tree/parser";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { ZodError } from "zod";
 import {
   buildUboRules,
   compileStylus,
   computeConfigStats,
+  CssParseError,
   parseUbolBaseConfig,
   serializeDeclaration,
   splitSelectorAndPseudoElement,
+  ValidationError,
 } from "../src/compiler.js";
+import { parseCss } from "../src/css-parser.js";
 
 describe("Compiler Engine", () => {
   describe("serializeDeclaration", () => {
     it("serializes declaration without !important when not present", () => {
-      const ast = parse("div { color: red; }");
+      const ast = parseCss("div { color: red; }");
       assert.equal(ast.type, "StyleSheet");
-      const rule = ast.children.first;
+      const rule = ast.body[0];
       assert.equal(rule?.type, "Rule");
-      const decl = rule.block.children.first;
+      const decl = rule.declarations[0];
       assert.equal(decl?.type, "Declaration");
       const serialized = serializeDeclaration(decl);
       assert.equal(serialized, "color:red");
     });
 
     it("serializes declaration with !important when present", () => {
-      const ast = parse("div { color: red !important; }");
+      const ast = parseCss("div { color: red !important; }");
       assert.equal(ast.type, "StyleSheet");
-      const rule = ast.children.first;
+      const rule = ast.body[0];
       assert.equal(rule?.type, "Rule");
-      const decl = rule.block.children.first;
+      const decl = rule.declarations[0];
       assert.equal(decl?.type, "Declaration");
       const serialized = serializeDeclaration(decl);
       assert.equal(serialized, "color:red !important");
     });
 
-    it("throws ZodError on invalid declaration node", () => {
-      assert.throws(() => serializeDeclaration(null), ZodError);
+    it("throws ValidationError on invalid declaration node", () => {
+      assert.throws(() => serializeDeclaration(null), ValidationError);
       assert.throws(
         () => serializeDeclaration({ type: "Rule", property: "color" }),
-        ZodError,
+        ValidationError,
       );
     });
   });
 
   describe("splitSelectorAndPseudoElement", () => {
     it("splits standard pseudo-elements from base selector", () => {
-      const ast = parse(".header::before { content: ''; }");
+      const ast = parseCss(".header::before { content: ''; }");
       assert.equal(ast.type, "StyleSheet");
-      const rule = ast.children.first;
+      const rule = ast.body[0];
       assert.equal(rule?.type, "Rule");
-      assert.equal(rule.prelude.type, "SelectorList");
-      const sel = rule.prelude.children.first;
+      const sel = rule.selectors[0];
       assert.equal(sel?.type, "Selector");
       const { baseSelector, pseudoElement } =
         splitSelectorAndPseudoElement(sel);
@@ -60,12 +60,11 @@ describe("Compiler Engine", () => {
     });
 
     it("splits single-colon pseudo-classes acting as pseudo-elements", () => {
-      const ast = parse(".btn:after { content: ''; }");
+      const ast = parseCss(".btn:after { content: ''; }");
       assert.equal(ast.type, "StyleSheet");
-      const rule = ast.children.first;
+      const rule = ast.body[0];
       assert.equal(rule?.type, "Rule");
-      assert.equal(rule.prelude.type, "SelectorList");
-      const sel = rule.prelude.children.first;
+      const sel = rule.selectors[0];
       assert.equal(sel?.type, "Selector");
       const { baseSelector, pseudoElement } =
         splitSelectorAndPseudoElement(sel);
@@ -73,15 +72,15 @@ describe("Compiler Engine", () => {
       assert.equal(pseudoElement, ":after");
     });
 
-    it("throws ZodError on invalid selector node", () => {
-      assert.throws(() => splitSelectorAndPseudoElement(null), ZodError);
+    it("throws ValidationError on invalid selector node", () => {
+      assert.throws(() => splitSelectorAndPseudoElement(null), ValidationError);
       assert.throws(
         () =>
           splitSelectorAndPseudoElement({
             type: "Selector",
-            children: 123,
+            raw: 123,
           }),
-        ZodError,
+        ValidationError,
       );
     });
   });
@@ -149,20 +148,23 @@ describe("Compiler Engine", () => {
       ];
       const config = buildUboRules(rules);
       assert.deepEqual(config.sandboxFilters, [
-        'example.com##.nav::before:style(content:">")',
+        "example.com##.nav::before:style(content:'>')",
       ]);
     });
 
-    it("throws ZodError on invalid rules or baseConfig types", () => {
-      assert.throws(() => buildUboRules("not-an-array"), ZodError);
-      assert.throws(() => buildUboRules([{ domain: 123, code: "" }]), ZodError);
+    it("throws ValidationError on invalid rules or baseConfig types", () => {
+      assert.throws(() => buildUboRules("not-an-array"), ValidationError);
+      assert.throws(
+        () => buildUboRules([{ domain: 123, code: "" }]),
+        ValidationError,
+      );
       assert.throws(
         () =>
           buildUboRules(
             [{ domain: "example.com", code: "" }],
             ["invalid-array-base"],
           ),
-        ZodError,
+        ValidationError,
       );
     });
   });
@@ -193,20 +195,20 @@ describe("Compiler Engine", () => {
       assert.equal(stats.styleRuleCount, 2);
     });
 
-    it("throws ZodError when config shape is invalid", () => {
-      assert.throws(() => computeConfigStats(null), ZodError);
+    it("throws ValidationError when config shape is invalid", () => {
+      assert.throws(() => computeConfigStats(null), ValidationError);
       assert.throws(
         () =>
           computeConfigStats({ customFilters: "invalid", sandboxFilters: [] }),
-        ZodError,
+        ValidationError,
       );
     });
   });
 
   describe("parseUbolBaseConfig", () => {
-    it("throws ZodError on non-string input", () => {
-      assert.throws(() => parseUbolBaseConfig(null), ZodError);
-      assert.throws(() => parseUbolBaseConfig(123), ZodError);
+    it("throws ValidationError on non-string input", () => {
+      assert.throws(() => parseUbolBaseConfig(null), ValidationError);
+      assert.throws(() => parseUbolBaseConfig(123), ValidationError);
     });
 
     it("rejects non-object JSON base configs", () => {
@@ -258,6 +260,44 @@ describe("Compiler Engine", () => {
       assert.equal(result.stats.styleRuleCount, 1);
     });
 
+    it("collects CSS parse errors across multiple styles with line numbers", () => {
+      const brokenStylus = JSON.stringify([
+        { settings: {} },
+        {
+          name: "Header Tweak",
+          sections: [
+            {
+              domains: ["a.example", "b.example"],
+              code: ".header {\n  color red;\n}",
+            },
+          ],
+        },
+        {
+          name: "Animations",
+          sections: [
+            {
+              domains: ["c.example"],
+              code: "@keyframes spin {\n  from { opacity: 0; }\n}",
+            },
+          ],
+        },
+      ]);
+
+      assert.throws(
+        () => compileStylus(brokenStylus),
+        (err) => {
+          assert.ok(err instanceof CssParseError);
+          // Multi-domain section error is deduplicated once, plus @keyframes error
+          assert.equal(err.issues.length, 2);
+          assert.match(err.message, /style "Header Tweak"/);
+          assert.match(err.message, /line 2, column 3/);
+          assert.match(err.message, /style "Animations"/);
+          assert.match(err.message, /@keyframes/);
+          return true;
+        },
+      );
+    });
+
     it("throws clear error on malformed JSON or empty text", () => {
       assert.throws(() => compileStylus(""), /Uploaded file is empty/);
       assert.throws(() => compileStylus("not a json"), /Failed to parse JSON/);
@@ -270,9 +310,9 @@ describe("Compiler Engine", () => {
       );
     });
 
-    it("throws ZodError on non-string rawText and rejects invalid baseConfigInput", () => {
-      assert.throws(() => compileStylus(null), ZodError);
-      assert.throws(() => compileStylus(42), ZodError);
+    it("throws ValidationError on non-string rawText and rejects invalid baseConfigInput", () => {
+      assert.throws(() => compileStylus(null), ValidationError);
+      assert.throws(() => compileStylus(42), ValidationError);
       const validStylus = JSON.stringify([
         { sections: [{ domains: ["site.com"], code: ".a { color: red; }" }] },
       ]);

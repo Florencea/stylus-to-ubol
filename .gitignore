@@ -4,7 +4,6 @@ logs
 npm-debug.log*
 
 node_modules
-dist
 *.local
 
 # Editor directories and files

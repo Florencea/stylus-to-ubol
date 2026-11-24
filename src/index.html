@@ -2,11 +2,15 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
     <title>stylus-to-ubol</title>
-    <link rel="stylesheet" href="/src/style.css" />
+    <link rel="stylesheet" href="./style.css" />
+    <link rel="modulepreload" href="./validate.js" />
+    <link rel="modulepreload" href="./css-parser.js" />
+    <link rel="modulepreload" href="./compiler.js" />
+    <link rel="modulepreload" href="./storage.js" />
   </head>
   <body>
     <div id="app">
@@ -230,7 +234,9 @@
           <!-- Error Alert Panel -->
           <div class="error-panel" id="error-panel" hidden>
             <div class="error-header">
-              <span class="error-title">Invalid Stylus JSON</span>
+              <span class="error-title" id="error-title"
+                >Invalid Stylus JSON</span
+              >
             </div>
             <pre class="error-message" id="error-message"></pre>
           </div>
@@ -238,6 +244,6 @@
       </main>
     </div>
 
-    <script type="module" src="/src/main.js"></script>
+    <script type="module" src="./main.js"></script>
   </body>
 </html>

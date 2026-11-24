@@ -10,22 +10,42 @@ const ROOT_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../..",
 );
-const DIST_DIR = path.join(ROOT_DIR, "dist");
+const SRC_DIR = path.join(ROOT_DIR, "src");
 
 describe("stylus-to-ubol web interface", () => {
   let server;
   let browser;
   let context;
   let page;
+  let pageErrors = [];
+  let consoleErrors = [];
+  let failedResponses = [];
 
   before(async () => {
-    server = await startStaticServer({ rootDir: DIST_DIR, port: 0 });
+    server = await startStaticServer({ rootDir: SRC_DIR, port: 0 });
     browser = await chromium.launch({ headless: true });
     context = await browser.newContext();
     page = await context.newPage();
+
+    page.on("pageerror", (err) => {
+      pageErrors.push(err.message);
+    });
+    page.on("console", (msg) => {
+      if (msg.type() === "error") {
+        consoleErrors.push(msg.text());
+      }
+    });
+    page.on("response", (res) => {
+      if (res.status() >= 400) {
+        failedResponses.push(`${res.status()} ${res.url()}`);
+      }
+    });
   });
 
   beforeEach(async () => {
+    pageErrors = [];
+    consoleErrors = [];
+    failedResponses = [];
     await page.goto(server.url);
     await page.evaluate(() => {
       localStorage.clear();
@@ -39,14 +59,20 @@ describe("stylus-to-ubol web interface", () => {
     await server?.close();
   });
 
-  it("renders initial UI elements with inlined styles correctly", async () => {
+  it("renders initial UI elements cleanly with native ES modules and stylesheet", async () => {
+    assert.deepEqual(pageErrors, []);
+    assert.deepEqual(consoleErrors, []);
+    assert.deepEqual(failedResponses, []);
+
     assert.equal(await page.locator("h1").textContent(), "stylus-to-ubol");
     assert.equal(await page.locator("#stylus-dropzone").count(), 1);
     assert.equal(await page.locator("#btn-upload-stylus").count(), 1);
 
-    // Stylesheet should be inlined in production dist/index.html
-    assert.equal(await page.locator('link[rel="stylesheet"]').count(), 0);
-    assert.equal(await page.locator("head style").count(), 1);
+    // Direct stylesheet link served from src/ without bundling
+    assert.equal(
+      await page.locator('link[rel="stylesheet"][href="./style.css"]').count(),
+      1,
+    );
 
     // Source selector: Default checked, Cached & Uploaded disabled
     assert.equal(await page.locator("#source-default").isChecked(), true);
@@ -126,8 +152,45 @@ describe("stylus-to-ubol web interface", () => {
 
     await page.locator("#error-panel").waitFor({ state: "visible" });
 
+    assert.equal(
+      await page.locator("#error-title").textContent(),
+      "Invalid Stylus JSON",
+    );
     const errorText = await page.locator("#error-message").textContent();
     assert.match(errorText ?? "", /Invalid Stylus JSON/);
+    assert.equal(await page.locator("#stats-panel").isHidden(), true);
+    assert.equal(await page.locator("#btn-download").isDisabled(), true);
+  });
+
+  it("displays CSS syntax error with style name and line number for unsupported CSS", async () => {
+    const brokenCssStylus = JSON.stringify([
+      { settings: {} },
+      {
+        name: "Broken Style",
+        sections: [
+          {
+            domains: ["example.com"],
+            code: ".card {\n  color red;\n}",
+          },
+        ],
+      },
+    ]);
+
+    await page.locator("#stylus-file-input").setInputFiles({
+      name: "broken-css.json",
+      mimeType: "application/json",
+      buffer: Buffer.from(brokenCssStylus, "utf8"),
+    });
+
+    await page.locator("#error-panel").waitFor({ state: "visible" });
+
+    assert.equal(
+      await page.locator("#error-title").textContent(),
+      "CSS Syntax Error",
+    );
+    const errorText = await page.locator("#error-message").textContent();
+    assert.match(errorText ?? "", /style "Broken Style"/);
+    assert.match(errorText ?? "", /line 2, column 3/);
     assert.equal(await page.locator("#stats-panel").isHidden(), true);
     assert.equal(await page.locator("#btn-download").isDisabled(), true);
   });
